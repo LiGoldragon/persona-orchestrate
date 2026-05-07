@@ -1,19 +1,77 @@
-# Persona Orchestrate Architecture
+# persona-orchestrate — architecture
 
-`persona-orchestrate` will replace the ad hoc lock helper with typed workspace
-coordination state.
+*Typed workspace coordination for agents working in the Persona ecosystem.*
+
+`persona-orchestrate` models the workspace coordination protocol as Rust state:
+roles, claims, role-visible lock projections, and handoff tasks. It is the
+typed successor to `~/primary/tools/orchestrate`.
+
+---
+
+## 0 · TL;DR
+
+This repo coordinates agents and workspace scopes. It is not the Persona
+runtime router, harness delivery engine, or main database owner.
 
 ```mermaid
 flowchart LR
-  "agent" -->|"claim command"| "OrchestrationState"
-  "OrchestrationState" -->|"role-visible views"| "lock projections"
-  "OrchestrationState" -->|"handoff tasks"| "task projections"
-  "OrchestrationState" -->|"workspace transition"| "persona-store"
+    "agent" -->|"claim command"| "OrchestrationState"
+    "OrchestrationState" -->|"lock projection"| "role lock files"
+    "OrchestrationState" -->|"handoff task"| "task projection"
+    "OrchestrationState" -->|"workspace transition"| "persona-store"
 ```
 
-The current primary workspace protocol remains the source of truth until this
-crate is ready to take over.
+## 1 · Component Surface
 
-This crate does not own harness delivery or the global Persona reducer. It
-coordinates workspace claims and handoffs, then records typed transitions through
-the store when that daemon exists.
+`persona-orchestrate` exposes:
+
+- role records;
+- claim scope records;
+- overlap checks;
+- lock-file projections;
+- handoff task records;
+- an `orchestrate` CLI surface for isolated development.
+
+## 2 · State and Ownership
+
+This component owns workspace coordination state. While primary still uses
+plain lock files, this repo models the typed replacement. BEADS remains a
+transitional shared task substrate and is never modeled as an exclusive lock.
+
+## 3 · Boundaries
+
+This repo owns:
+
+- agent role and claim state;
+- claim/release command surfaces;
+- workspace handoff tasks;
+- projections compatible with the current orchestration protocol.
+
+This repo does not own:
+
+- runtime Persona delivery (`persona-router`);
+- harness lifecycle (`persona-harness`);
+- main runtime database semantics (`persona-store`);
+- BEADS internals or BEADS exclusivity.
+
+## 4 · Invariants
+
+- Every agent knows its role before claiming.
+- Claims prevent overlapping file ownership; BEADS is never claimed.
+- Lock files are projections, not the source of durable typed truth.
+- Open task checks are coordination visibility, not locking.
+
+## Code Map
+
+```text
+src/role.rs   role records
+src/claim.rs  claim scope records
+src/main.rs   orchestrate CLI scaffold
+tests/        orchestration smoke tests
+```
+
+## See Also
+
+- `~/primary/protocols/orchestration.md`
+- `../persona-store/ARCHITECTURE.md`
+- `../persona/ARCHITECTURE.md`
