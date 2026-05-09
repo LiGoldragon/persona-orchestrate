@@ -34,6 +34,7 @@
           meta.mainProgram = "mind";
         });
         checks = {
+          default = craneLib.cargoTest (commonArgs // { inherit cargoArtifacts; });
           build = craneLib.cargoBuild (commonArgs // { inherit cargoArtifacts; });
           test = craneLib.cargoTest (commonArgs // { inherit cargoArtifacts; });
           test-doc = craneLib.cargoTest (commonArgs // {
