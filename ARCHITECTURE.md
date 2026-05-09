@@ -34,9 +34,20 @@ flowchart LR
 
 ## 2 · State and Ownership
 
-This component owns workspace coordination state. While primary still uses
-plain lock files, this repo models the typed replacement. BEADS remains a
-transitional shared task substrate and is never modeled as an exclusive lock.
+This component owns workspace coordination state — roles, claims, handoff
+tasks, lock projections. The state lives in this component's **own redb
+file** (e.g. `orchestrate.redb`), opened through `persona-sema` (which uses
+the workspace's `sema` database library underneath). Lock files on disk are
+projections of the typed records, regenerated from the database on commit.
+
+While primary still uses plain lock files (`tools/orchestrate`), this repo
+models the typed replacement. BEADS remains a transitional shared task
+substrate and is never modeled as an exclusive lock.
+
+Per `~/primary/reports/designer/92-sema-as-database-library-architecture-revamp.md`:
+sema is a library; this component owns its own sema-managed database, the
+same way every other state-bearing component does (criome, persona-router,
+persona-harness, future mentci).
 
 ## 3 · Boundaries
 
@@ -51,7 +62,8 @@ This repo does not own:
 
 - runtime Persona delivery (`persona-router`);
 - harness lifecycle (`persona-harness`);
-- typed table mechanics (`persona-sema`);
+- typed table mechanics (`persona-sema` for table layouts; `sema`
+  for the kernel underneath);
 - BEADS internals or BEADS exclusivity.
 
 ## 4 · Invariants

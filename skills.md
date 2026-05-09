@@ -9,6 +9,9 @@ Rules for work here:
   remains the transitional task substrate.
 - Keep runtime message delivery in `persona-router`.
 - Keep harness lifecycle in `persona-harness`.
-- Keep the main assembled database write boundary in `persona-store`.
-- Lock files are projections for human and cross-harness visibility.
+- This component owns **its own** `persona-sema`-backed redb file (e.g.
+  `orchestrate.redb`). The orchestration state actor sequences writes through
+  that database; no shared cross-component DB.
+- Lock files are projections for human and cross-harness visibility,
+  regenerated from the typed records on commit.
 
