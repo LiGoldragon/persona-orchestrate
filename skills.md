@@ -1,7 +1,8 @@
-# persona-orchestrate skill
+# persona-mind skill
 
-Work here when the change concerns typed workspace coordination: roles, claims,
-handoff tasks, lock projections, or the `orchestrate` CLI.
+Work here when the change concerns Persona's central typed state: roles,
+claims, handoff tasks, activity, memory/work items, notes, dependencies,
+aliases, ready-work projections, lock projections, or the `mind` CLI.
 
 Rules for work here:
 
@@ -10,8 +11,9 @@ Rules for work here:
 - Keep runtime message delivery in `persona-router`.
 - Keep harness lifecycle in `persona-harness`.
 - This component owns **its own** `persona-sema`-backed redb file (e.g.
-  `orchestrate.redb`). The orchestration state actor sequences writes through
+  `mind.redb`). The mind state actor sequences writes through
   that database; no shared cross-component DB.
+- Memory/work mutations append typed events; item state and ready-work lists are
+  projections.
 - Lock files are projections for human and cross-harness visibility,
   regenerated from the typed records on commit.
-

@@ -1,11 +1,10 @@
-# persona-orchestrate
+# persona-mind
 
-Typed workspace orchestration state for Persona agents.
+Central typed mind state for Persona agents.
 
-This crate models role ownership, claimed scopes, handoff tasks, and the typed
-replacement for primary workspace lock files.
+This crate models role ownership, claimed scopes, handoff tasks, activity,
+memory/work items, notes, dependencies, aliases, and ready-work views.
 
-It is not Persona's runtime router, harness, or message database. Each
-state-bearing Persona component owns its own Sema database through
-`persona-sema`; this crate owns only collaborative workspace coordination
-state.
+It is not Persona's runtime router or harness adapter. It owns `mind.redb`
+through `persona-sema`; lock files and ready-work lists are projections of
+typed mind state.

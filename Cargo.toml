@@ -1,20 +1,23 @@
 [package]
-name         = "persona-orchestrate"
+name         = "persona-mind"
 version      = "0.1.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
-repository   = "https://github.com/LiGoldragon/persona-orchestrate"
-description  = "Typed orchestration state for Persona agents."
+repository   = "https://github.com/LiGoldragon/persona-mind"
+description  = "Typed mind state for Persona agents."
 publish      = false
 
 [lib]
-name = "persona_orchestrate"
+name = "persona_mind"
 path = "src/lib.rs"
 
 [[bin]]
-name = "persona-orchestrate-daemon"
+name = "mind"
 path = "src/main.rs"
+
+[dependencies]
+signal-persona-mind = { git = "https://github.com/LiGoldragon/signal-persona-mind.git" }
 
 [lints.rust]
 unsafe_code = "forbid"

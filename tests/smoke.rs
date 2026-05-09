@@ -1,4 +1,4 @@
-use persona_orchestrate::{ClaimScope, ClaimState, PersonaRole};
+use persona_mind::{ClaimScope, ClaimState, PersonaRole};
 
 #[test]
 fn claim_state_records_scope_once() {

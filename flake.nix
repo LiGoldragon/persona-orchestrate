@@ -1,62 +1,63 @@
 {
-  description = "Typed orchestration state for Persona agents.";
+  description = "Typed mind state for Persona agents.";
 
   inputs = {
-    nixpkgs.url = "github:LiGoldragon/nixpkgs?ref=main";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+    fenix = {
+      url = "github:nix-community/fenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    crane.url = "github:ipetkov/crane";
   };
 
-  outputs =
-    { self, nixpkgs }:
-    let
-      systems = [ "x86_64-linux" "aarch64-linux" ];
-      forSystems = function: nixpkgs.lib.genAttrs systems (system: function system nixpkgs.legacyPackages.${system});
-    in
-    {
-      packages = forSystems (
-        system: pkgs:
-        {
-          default = pkgs.rustPlatform.buildRustPackage {
-            pname = "persona-orchestrate";
-            version = "0.1.0";
-            src = ./.;
-            cargoLock.lockFile = ./Cargo.lock;
-            meta.mainProgram = "persona-orchestrate-daemon";
-          };
-        }
-      );
-
-      checks = forSystems (
-        system: pkgs:
-        {
-          default = self.packages.${system}.default;
-        }
-      );
-
-      apps = forSystems (
-        system: pkgs:
-        {
-          default = {
-            type = "app";
-            program = "${self.packages.${system}.default}/bin/persona-orchestrate-daemon";
-          };
-        }
-      );
-
-      devShells = forSystems (
-        system: pkgs:
-        {
-          default = pkgs.mkShell {
-            packages = [
-              pkgs.cargo
-              pkgs.clippy
-              pkgs.rust-analyzer
-              pkgs.rustc
-              pkgs.rustfmt
-            ];
-          };
-        }
-      );
-
-      formatter = forSystems (system: pkgs: pkgs.nixfmt);
-    };
+  outputs = { self, nixpkgs, flake-utils, fenix, crane }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = import nixpkgs { inherit system; };
+        toolchain = fenix.packages.${system}.stable.withComponents [
+          "cargo"
+          "rustc"
+          "rustfmt"
+          "clippy"
+          "rust-analyzer"
+          "rust-src"
+        ];
+        craneLib = (crane.mkLib pkgs).overrideToolchain toolchain;
+        src = craneLib.cleanCargoSource ./.;
+        commonArgs = { inherit src; strictDeps = true; };
+        cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+      in
+      {
+        packages.default = craneLib.buildPackage (commonArgs // {
+          inherit cargoArtifacts;
+          meta.mainProgram = "mind";
+        });
+        checks = {
+          build = craneLib.cargoBuild (commonArgs // { inherit cargoArtifacts; });
+          test = craneLib.cargoTest (commonArgs // { inherit cargoArtifacts; });
+          test-doc = craneLib.cargoTest (commonArgs // {
+            inherit cargoArtifacts;
+            cargoTestExtraArgs = "--doc";
+          });
+          doc = craneLib.cargoDoc (commonArgs // {
+            inherit cargoArtifacts;
+            RUSTDOCFLAGS = "-D warnings";
+          });
+          fmt = craneLib.cargoFmt { inherit src; };
+          clippy = craneLib.cargoClippy (commonArgs // {
+            inherit cargoArtifacts;
+            cargoClippyExtraArgs = "--all-targets -- -D warnings";
+          });
+        };
+        apps.default = {
+          type = "app";
+          program = "${self.packages.${system}.default}/bin/mind";
+        };
+        devShells.default = pkgs.mkShell {
+          name = "persona-mind";
+          packages = [ pkgs.jujutsu pkgs.pkg-config toolchain ];
+        };
+        formatter = pkgs.nixfmt;
+      });
 }
