@@ -18,7 +18,7 @@ flowchart LR
     "agent" -->|"claim command"| "OrchestrationState"
     "OrchestrationState" -->|"lock projection"| "role lock files"
     "OrchestrationState" -->|"handoff task"| "task projection"
-    "OrchestrationState" -->|"workspace transition"| "persona-store"
+    "OrchestrationState" -->|"orchestrate-owned state"| "persona-sema"
 ```
 
 ## 1 · Component Surface
@@ -51,7 +51,7 @@ This repo does not own:
 
 - runtime Persona delivery (`persona-router`);
 - harness lifecycle (`persona-harness`);
-- main runtime database semantics (`persona-store`);
+- typed table mechanics (`persona-sema`);
 - BEADS internals or BEADS exclusivity.
 
 ## 4 · Invariants
@@ -73,5 +73,5 @@ tests/        orchestration smoke tests
 ## See Also
 
 - `~/primary/protocols/orchestration.md`
-- `../persona-store/ARCHITECTURE.md`
+- `../persona-sema/ARCHITECTURE.md`
 - `../persona/ARCHITECTURE.md`
