@@ -18,35 +18,35 @@ impl Fixture {
     }
 
     fn open_task(&self, title: &str) -> StableItemId {
-        match self.dispatch(MindRequest::Open(Opening {
+        match self.dispatch(MindRequest::Opening(Opening {
             kind: Kind::Task,
             priority: Priority::Normal,
             title: Title::new(title),
             body: Body::new("body"),
         })) {
-            MindReply::Opened(receipt) => receipt.event.item.id,
+            MindReply::OpeningReceipt(receipt) => receipt.event.item.id,
             other => panic!("expected open receipt, got {other:?}"),
         }
     }
 
     fn open_decision(&self, title: &str) -> StableItemId {
-        match self.dispatch(MindRequest::Open(Opening {
+        match self.dispatch(MindRequest::Opening(Opening {
             kind: Kind::Decision,
             priority: Priority::High,
             title: Title::new(title),
             body: Body::new("decision body"),
         })) {
-            MindReply::Opened(receipt) => receipt.event.item.id,
+            MindReply::OpeningReceipt(receipt) => receipt.event.item.id,
             other => panic!("expected open receipt, got {other:?}"),
         }
     }
 
     fn add_note(&self, item: &StableItemId, body: &str) {
-        match self.dispatch(MindRequest::AddNote(NoteSubmission {
+        match self.dispatch(MindRequest::NoteSubmission(NoteSubmission {
             item: ItemReference::Stable(item.clone()),
             body: Body::new(body),
         })) {
-            MindReply::NoteAdded(_) => {}
+            MindReply::NoteReceipt(_) => {}
             other => panic!("expected note receipt, got {other:?}"),
         }
     }
@@ -58,7 +58,7 @@ impl Fixture {
             target: LinkTarget::Item(ItemReference::Stable(target.clone())),
             body: None,
         })) {
-            MindReply::Linked(_) => {}
+            MindReply::LinkReceipt(_) => {}
             other => panic!("expected link receipt, got {other:?}"),
         }
     }
@@ -70,28 +70,28 @@ impl Fixture {
             target: LinkTarget::External(ExternalReference::Report(ReportPath::new(path))),
             body: None,
         })) {
-            MindReply::Linked(_) => {}
+            MindReply::LinkReceipt(_) => {}
             other => panic!("expected report link receipt, got {other:?}"),
         }
     }
 
     fn change_status(&self, item: &StableItemId, status: Status) {
-        match self.dispatch(MindRequest::ChangeStatus(StatusChange {
+        match self.dispatch(MindRequest::StatusChange(StatusChange {
             item: ItemReference::Stable(item.clone()),
             status,
             body: None,
         })) {
-            MindReply::StatusChanged(_) => {}
+            MindReply::StatusReceipt(_) => {}
             other => panic!("expected status receipt, got {other:?}"),
         }
     }
 
     fn add_alias(&self, item: &StableItemId, alias: &str) {
-        match self.dispatch(MindRequest::AddAlias(AliasAssignment {
+        match self.dispatch(MindRequest::AliasAssignment(AliasAssignment {
             item: ItemReference::Stable(item.clone()),
             alias: ExternalAlias::new(alias),
         })) {
-            MindReply::AliasAdded(_) => {}
+            MindReply::AliasReceipt(_) => {}
             other => panic!("expected alias receipt, got {other:?}"),
         }
     }
@@ -108,7 +108,7 @@ impl Fixture {
 
     fn rejected(&self, request: MindRequest) -> RejectionReason {
         match self.dispatch(request) {
-            MindReply::Rejected(rejection) => rejection.reason,
+            MindReply::Rejection(rejection) => rejection.reason,
             other => panic!("expected rejection, got {other:?}"),
         }
     }
@@ -224,7 +224,7 @@ fn unknown_item_rejects_mutations_and_queries() {
     let missing = StableItemId::new("missing-item");
 
     assert_eq!(
-        fixture.rejected(MindRequest::AddNote(NoteSubmission {
+        fixture.rejected(MindRequest::NoteSubmission(NoteSubmission {
             item: ItemReference::Stable(missing.clone()),
             body: Body::new("lost"),
         })),

@@ -51,11 +51,11 @@ impl DispatchSupervisor {
         trace.record(ActorKind::RequestDispatcher, TraceAction::MessageReceived);
 
         let pipeline = match envelope.request() {
-            MindRequest::Open(_)
-            | MindRequest::AddNote(_)
+            MindRequest::Opening(_)
+            | MindRequest::NoteSubmission(_)
             | MindRequest::Link(_)
-            | MindRequest::ChangeStatus(_)
-            | MindRequest::AddAlias(_) => {
+            | MindRequest::StatusChange(_)
+            | MindRequest::AliasAssignment(_) => {
                 trace.record(ActorKind::MemoryFlow, TraceAction::MessageReceived);
                 self.apply_memory(envelope, trace).await?
             }

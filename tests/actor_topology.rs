@@ -69,7 +69,7 @@ fn topology_manifest_names_required_actor_planes() {
 async fn open_item_runs_through_kameo_write_path() {
     let fixture = ActorFixture::new().await;
     let response = fixture
-        .submit(MindRequest::Open(Opening {
+        .submit(MindRequest::Opening(Opening {
             kind: Kind::Task,
             priority: Priority::High,
             title: Title::new("Implement Kameo-backed mind"),
@@ -77,7 +77,7 @@ async fn open_item_runs_through_kameo_write_path() {
         }))
         .await;
 
-    let MindReply::Opened(receipt) = response.reply().expect("reply exists") else {
+    let MindReply::OpeningReceipt(receipt) = response.reply().expect("reply exists") else {
         panic!("expected opened reply");
     };
 
@@ -116,7 +116,7 @@ async fn open_item_runs_through_kameo_write_path() {
 async fn query_path_uses_read_actor_without_writer() {
     let fixture = ActorFixture::new().await;
     let _opened = fixture
-        .submit(MindRequest::Open(Opening {
+        .submit(MindRequest::Opening(Opening {
             kind: Kind::Task,
             priority: Priority::Normal,
             title: Title::new("Query actor path"),

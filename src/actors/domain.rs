@@ -81,11 +81,11 @@ struct MemoryOperation {
 impl MemoryOperation {
     fn from_request(request: &MindRequest) -> Self {
         let actor = match request {
-            MindRequest::Open(_) => ActorKind::ItemOpen,
-            MindRequest::AddNote(_) => ActorKind::NoteAdd,
+            MindRequest::Opening(_) => ActorKind::ItemOpen,
+            MindRequest::NoteSubmission(_) => ActorKind::NoteAdd,
             MindRequest::Link(_) => ActorKind::Link,
-            MindRequest::ChangeStatus(_) => ActorKind::StatusChange,
-            MindRequest::AddAlias(_) => ActorKind::AliasAdd,
+            MindRequest::StatusChange(_) => ActorKind::StatusChange,
+            MindRequest::AliasAssignment(_) => ActorKind::AliasAdd,
             _ => ActorKind::ErrorShaper,
         };
         Self { actor }

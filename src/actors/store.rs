@@ -99,14 +99,14 @@ struct WriteTrace {
 impl WriteTrace {
     fn from_request(request: &MindRequest) -> Self {
         match request {
-            MindRequest::Open(_) => Self {
+            MindRequest::Opening(_) => Self {
                 reads_existing_graph: false,
                 mints_identity: true,
             },
-            MindRequest::AddNote(_)
+            MindRequest::NoteSubmission(_)
             | MindRequest::Link(_)
-            | MindRequest::ChangeStatus(_)
-            | MindRequest::AddAlias(_) => Self {
+            | MindRequest::StatusChange(_)
+            | MindRequest::AliasAssignment(_) => Self {
                 reads_existing_graph: true,
                 mints_identity: false,
             },

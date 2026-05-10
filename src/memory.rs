@@ -72,11 +72,11 @@ impl Graph {
     fn dispatch_envelope(&mut self, envelope: MindEnvelope) -> Option<MindReply> {
         let MindEnvelope { actor, request } = envelope;
         match request {
-            MindRequest::Open(opening) => Some(self.open(opening, &actor)),
-            MindRequest::AddNote(note) => Some(self.add_note(note, &actor)),
+            MindRequest::Opening(opening) => Some(self.open(opening, &actor)),
+            MindRequest::NoteSubmission(note) => Some(self.add_note(note, &actor)),
             MindRequest::Link(link) => Some(self.link(link, &actor)),
-            MindRequest::ChangeStatus(change) => Some(self.change_status(change, &actor)),
-            MindRequest::AddAlias(alias) => Some(self.add_alias(alias, &actor)),
+            MindRequest::StatusChange(change) => Some(self.change_status(change, &actor)),
+            MindRequest::AliasAssignment(alias) => Some(self.add_alias(alias, &actor)),
             MindRequest::Query(query) => Some(self.query(query)),
             MindRequest::RoleClaim(_)
             | MindRequest::RoleRelease(_)
@@ -105,7 +105,7 @@ impl Graph {
         self.items.push(event.item.clone());
         self.events.push(Event::ItemOpened(event.clone()));
 
-        MindReply::Opened(OpeningReceipt { event })
+        MindReply::OpeningReceipt(OpeningReceipt { event })
     }
 
     fn add_note(&mut self, submission: NoteSubmission, actor: &ActorName) -> MindReply {
@@ -124,7 +124,7 @@ impl Graph {
         self.notes.push(event.note.clone());
         self.events.push(Event::NoteAdded(event.clone()));
 
-        MindReply::NoteAdded(signal_persona_mind::NoteReceipt { event })
+        MindReply::NoteReceipt(signal_persona_mind::NoteReceipt { event })
     }
 
     fn link(&mut self, link: Link, actor: &ActorName) -> MindReply {
@@ -147,7 +147,7 @@ impl Graph {
         self.edges.push(event.edge.clone());
         self.events.push(Event::EdgeAdded(event.clone()));
 
-        MindReply::Linked(signal_persona_mind::LinkReceipt { event })
+        MindReply::LinkReceipt(signal_persona_mind::LinkReceipt { event })
     }
 
     fn change_status(&mut self, change: StatusChange, actor: &ActorName) -> MindReply {
@@ -166,7 +166,7 @@ impl Graph {
 
         self.events.push(Event::StatusChanged(event.clone()));
 
-        MindReply::StatusChanged(signal_persona_mind::StatusReceipt { event })
+        MindReply::StatusReceipt(signal_persona_mind::StatusReceipt { event })
     }
 
     fn add_alias(&mut self, assignment: AliasAssignment, actor: &ActorName) -> MindReply {
@@ -188,7 +188,7 @@ impl Graph {
 
         self.events.push(Event::AliasAdded(event.clone()));
 
-        MindReply::AliasAdded(signal_persona_mind::AliasReceipt { event })
+        MindReply::AliasReceipt(signal_persona_mind::AliasReceipt { event })
     }
 
     fn query(&self, query: Query) -> MindReply {
@@ -391,7 +391,7 @@ impl Graph {
     }
 
     fn rejected(reason: RejectionReason) -> MindReply {
-        MindReply::Rejected(Rejection { reason })
+        MindReply::Rejection(Rejection { reason })
     }
 }
 

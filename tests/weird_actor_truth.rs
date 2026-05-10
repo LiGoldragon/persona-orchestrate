@@ -502,7 +502,7 @@ async fn parallel_runtimes_cannot_share_registry_names_or_memory() {
     let second_runtime = ActorRuntimeFixture::new(ActorName::new("designer")).await;
 
     let first_reply = first_runtime
-        .submit(MindRequest::Open(Opening {
+        .submit(MindRequest::Opening(Opening {
             kind: Kind::Task,
             priority: Priority::High,
             title: Title::new("First runtime item"),
@@ -510,7 +510,7 @@ async fn parallel_runtimes_cannot_share_registry_names_or_memory() {
         }))
         .await;
     let second_reply = second_runtime
-        .submit(MindRequest::Open(Opening {
+        .submit(MindRequest::Opening(Opening {
             kind: Kind::Task,
             priority: Priority::Low,
             title: Title::new("Second runtime item"),
@@ -518,10 +518,10 @@ async fn parallel_runtimes_cannot_share_registry_names_or_memory() {
         }))
         .await;
 
-    let MindReply::Opened(first_receipt) = first_reply.reply().expect("first reply exists") else {
+    let MindReply::OpeningReceipt(first_receipt) = first_reply.reply().expect("first reply exists") else {
         panic!("expected first opened reply");
     };
-    let MindReply::Opened(second_receipt) = second_reply.reply().expect("second reply exists")
+    let MindReply::OpeningReceipt(second_receipt) = second_reply.reply().expect("second reply exists")
     else {
         panic!("expected second opened reply");
     };

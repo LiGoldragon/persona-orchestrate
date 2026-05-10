@@ -412,7 +412,7 @@ dependencies = [
 [[package]]
 name = "signal-persona-mind"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-persona-mind.git#34257322b71a6ceb78f5d2383d4130e94c493e82"
+source = "git+https://github.com/LiGoldragon/signal-persona-mind.git#4505ababae2e93cc441fde5944d9752810f9a58d"
 dependencies = [
  "rkyv",
  "signal-core",
