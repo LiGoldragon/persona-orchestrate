@@ -6,7 +6,9 @@
 > `ractor` tree, routes typed `MindEnvelope` requests through named
 > supervisor actors, and proves the path with manifest/trace tests. Durable
 > `persona-sema` tables are the next storage substrate; current state is still
-> held by the in-memory reducers behind `StoreSupervisorActor`.
+> held by in-memory mind reducers behind the state/write actor path. The
+> current internal trace name `StoreSupervisorActor` is historical; it does not
+> mean a shared store component.
 
 ---
 
@@ -32,7 +34,7 @@ flowchart LR
     ingress --> dispatch["DispatchSupervisorActor"]
     dispatch --> domain["DomainSupervisorActor"]
     dispatch --> views["ViewSupervisorActor"]
-    domain --> store["StoreSupervisorActor"]
+    domain --> store["StoreSupervisorActor (mind state/write plane)"]
     views --> store
     store --> reducer["memory reducers"]
     store -. "next storage substrate" .-> sema["persona-sema"]
@@ -53,7 +55,7 @@ The crate exposes:
   supervisors, and trace-phase actors.
 - `actors::ActorTrace` — per-request witness proving which actor planes ran.
 - `MemoryState` — current in-memory memory/work reducer owned by
-  `StoreSupervisorActor`.
+  the mind state/write actor path.
 - `ClaimState` — current in-memory claim reducer used by existing claim tests.
 
 The `mind` binary is still a scaffold. It must become a one-NOTA-record input
@@ -71,7 +73,7 @@ flowchart TB
     root --> ingress["IngressSupervisorActor"]
     root --> dispatch["DispatchSupervisorActor"]
     root --> domain["DomainSupervisorActor"]
-    root --> store["StoreSupervisorActor"]
+    root --> store["StoreSupervisorActor (mind state/write plane)"]
     root --> views["ViewSupervisorActor"]
     root --> subscriptions["SubscriptionSupervisorActor"]
     root --> reply["ReplySupervisorActor"]
@@ -126,7 +128,8 @@ public handles.
 
 ## 3 · Request Paths
 
-Memory mutations run through ingress, dispatch, domain, store, and reply:
+Memory mutations run through ingress, dispatch, domain, the mind state/write
+plane, and reply:
 
 ```mermaid
 sequenceDiagram
@@ -153,10 +156,12 @@ asserts that ready-work query is read-only by actor path, not by convention.
 
 ## 4 · State and Ownership
 
-`StoreSupervisorActor` is the current state owner. It owns `MemoryState`, which
-owns a private graph reducer. The reducer appends typed `Event` values for
-memory/work mutations and derives item, edge, note, alias, ready, blocked, and
-recent-event views from that state.
+`StoreSupervisorActor` is the current internal name for the mind-owned
+state/write plane. It is not a shared store component and does not imply a
+`persona-store` repo. It owns `MemoryState`, which owns a private graph
+reducer. The reducer appends typed `Event` values for memory/work mutations and
+derives item, edge, note, alias, ready, blocked, and recent-event views from
+that state.
 
 `MemoryState::dispatch` remains as a reducer test facade. `MindRuntime` users
 call `MindRuntime::submit`, which wraps the same reducer behind the actor
@@ -164,7 +169,8 @@ path. `MemoryState::dispatch_envelope` is the bridge that carries envelope
 actor identity into event headers and note authorship.
 
 The durable target is one workspace-local `mind.redb`, opened through
-`persona-sema`. Only the store/write actor plane is allowed to commit writes.
+`persona-sema`. Only the mind state/write actor plane is allowed to commit
+writes.
 Queries use read snapshots and return typed views; they do not repair state
 while answering.
 
@@ -190,7 +196,7 @@ This repo does not own:
 ## 6 · Invariants
 
 - Every public operation enters as one `MindEnvelope`.
-- Store-supplied identity, sequence, time, and operation context are
+- Mind-supplied identity, sequence, time, and operation context are
   infrastructure concerns; request payloads carry content, not authority.
 - The root actor is the only bare `Actor::spawn` site; children are linked
   from `MindRootActor`.
