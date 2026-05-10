@@ -1,8 +1,8 @@
 use persona_mind::actors::{ActorKind, ActorManifest, ActorResidency, TraceAction};
 use persona_mind::{MindEnvelope, MindRuntime, StoreLocation};
 use signal_persona_mind::{
-    ActorName, TextBody, ItemKind, MindReply, MindRequest, Opening, ItemPriority, Query, QueryKind, QueryLimit,
-    Title,
+    ActorName, ItemKind, ItemPriority, MindReply, MindRequest, Opening, Query, QueryKind,
+    QueryLimit, TextBody, Title,
 };
 
 struct ActorFixture {

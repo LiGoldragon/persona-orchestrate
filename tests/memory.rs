@@ -1,9 +1,9 @@
 use persona_mind::{MemoryState, StoreLocation};
 use signal_persona_mind::{
-    AliasAssignment, TextBody, EdgeKind, EdgeTarget, Event, ExternalAlias, ExternalReference,
-    ItemReference, ItemKind, Link, LinkTarget, MindReply, MindRequest, NoteSubmission, Opening,
-    ItemPriority, Query, QueryKind, QueryLimit, RejectionReason, ReportPath, StableItemId, ItemStatus,
-    StatusChange, Title, View,
+    AliasAssignment, EdgeKind, EdgeTarget, Event, ExternalAlias, ExternalReference, ItemKind,
+    ItemPriority, ItemReference, ItemStatus, Link, LinkTarget, MindReply, MindRequest,
+    NoteSubmission, Opening, Query, QueryKind, QueryLimit, RejectionReason, ReportPath,
+    StableItemId, StatusChange, TextBody, Title, View,
 };
 
 struct Fixture {

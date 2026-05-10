@@ -292,7 +292,32 @@ This repo does not own:
 - a shared database for other components;
 - BEADS as a live backend.
 
-## 8 · Invariants
+## 8 · Constraints
+
+- The `mind` CLI accepts exactly one NOTA request record and prints exactly one
+  NOTA reply record.
+- The `mind` CLI sends Signal frames to the long-lived `persona-mind` daemon;
+  it does not own `MindRoot`.
+- The daemon owns `MindRoot` for its process lifetime.
+- The daemon owns `mind.redb`; the CLI never opens the database.
+- `MindRequest` and `MindReply` come from `signal-persona-mind`; the CLI does
+  not define a parallel command vocabulary.
+- All public state operations enter the actor system as one `MindEnvelope`.
+- Caller identity, time, event sequence, operation IDs, stable IDs, and display
+  IDs are minted by infrastructure/store actors, not by request payloads.
+- The root actor is the only bare Kameo spawn site.
+- Stateful/failure-bearing phases are actors or reducers owned by actors, not
+  shared locks between actors.
+- Queries never send write intents.
+- Writes append typed events before producing success replies.
+- Role claim, release, handoff, observation, activity submission, and activity
+  query are successful runtime paths, not unsupported placeholders.
+- BEADS import creates aliases or external references only; there is no live
+  BEADS bridge.
+- Lock files are outside the implementation; `persona-mind` replaces them
+  instead of projecting them.
+
+## 9 · Invariants
 
 - Every public state operation enters as one `MindEnvelope`.
 - The command-line surface accepts one NOTA request record and prints one NOTA
@@ -309,7 +334,7 @@ This repo does not own:
 - Durable truth lives in `mind.redb`; lock files are outside this
   implementation and BEADS is import/history only.
 
-## 9 · Architectural-truth Tests
+## 10 · Architectural-truth Tests
 
 The next implementation wave should add tests named for architectural
 constraints:

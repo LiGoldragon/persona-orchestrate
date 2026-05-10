@@ -1,17 +1,18 @@
 //! In-memory mind graph used by the first typed tests.
 //!
-//! Production storage moves through `persona-sema`; this module keeps
-//! the graph reducer honest while durable tables land.
+//! Production storage moves through mind-owned Sema tables over the
+//! `sema` kernel; this module keeps the graph reducer honest while
+//! durable tables land.
 
 use std::cell::RefCell;
 
 use crate::MindEnvelope;
 use signal_persona_mind::{
     ActorName, AliasAddedEvent, AliasAssignment, DisplayId, Edge, EdgeAddedEvent, EdgeKind,
-    EdgeTarget, Event, EventHeader, EventSeq, ExternalAlias, Item, ItemOpenedEvent, ItemReference,
-    ItemKind, Link, LinkTarget, MindReply, MindRequest, Note, NoteAddedEvent, NoteSubmission, Opening,
-    OpeningReceipt, OperationId, Query, QueryKind, QueryLimit, Rejection, RejectionReason,
-    StableItemId, ItemStatus, StatusChange, StatusChangedEvent, View,
+    EdgeTarget, Event, EventHeader, EventSeq, ExternalAlias, Item, ItemKind, ItemOpenedEvent,
+    ItemReference, ItemStatus, Link, LinkTarget, MindReply, MindRequest, Note, NoteAddedEvent,
+    NoteSubmission, Opening, OpeningReceipt, OperationId, Query, QueryKind, QueryLimit, Rejection,
+    RejectionReason, StableItemId, StatusChange, StatusChangedEvent, View,
 };
 
 pub struct MemoryState {

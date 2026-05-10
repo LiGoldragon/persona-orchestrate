@@ -402,7 +402,7 @@ dependencies = [
 [[package]]
 name = "signal-core"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-core.git#e27bc600fa9129c4482427ab00c40ecab419d098"
+source = "git+https://github.com/LiGoldragon/signal-core.git#01d91cf09b3388a1ef1e774d7aeb536d5ec08fae"
 dependencies = [
  "nota-codec",
  "rkyv",
@@ -412,7 +412,7 @@ dependencies = [
 [[package]]
 name = "signal-persona-mind"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-persona-mind.git#eeb1311019152964404443177e831bca6723c8de"
+source = "git+https://github.com/LiGoldragon/signal-persona-mind.git#721dd198910c9a639042393815314aa73c5e3e8c"
 dependencies = [
  "rkyv",
  "signal-core",

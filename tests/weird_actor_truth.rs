@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use persona_mind::actors::{ActorKind, ActorManifest, ActorResidency};
 use persona_mind::{MindEnvelope, MindRuntime, StoreLocation};
 use signal_persona_mind::{
-    ActorName, TextBody, ItemKind, MindReply, MindRequest, Opening, ItemPriority, Query, QueryKind, QueryLimit,
-    RoleClaim, RoleName, ScopeReason, ScopeReference, Title, WirePath,
+    ActorName, ItemKind, ItemPriority, MindReply, MindRequest, Opening, Query, QueryKind,
+    QueryLimit, RoleClaim, RoleName, ScopeReason, ScopeReference, TextBody, Title, WirePath,
 };
 
 struct SourceTree {
@@ -57,6 +57,12 @@ impl SourceTree {
 
     fn guarded_files(&self) -> Vec<SourceFile> {
         GuardedFileCollector::new(self.root.clone()).into_files()
+    }
+
+    fn file(&self, relative_name: &str) -> SourceFile {
+        let path = self.root.join(relative_name);
+        let text = fs::read_to_string(&path).expect("named source file is readable");
+        SourceFile { path, text }
     }
 }
 
@@ -432,6 +438,122 @@ fn kameo_is_the_only_actor_library_boundary() {
 }
 
 #[test]
+fn mind_cli_cannot_open_the_mind_database() {
+    let main = SourceTree::new().file("src/main.rs");
+    let forbidden_fragments = [
+        ForbiddenFragment {
+            text: "StoreLocation",
+            reason: "CLI must not construct a store location",
+        },
+        ForbiddenFragment {
+            text: "mind.redb",
+            reason: "CLI must not name the durable database",
+        },
+        ForbiddenFragment {
+            text: "redb",
+            reason: "CLI must not open the database kernel",
+        },
+        ForbiddenFragment {
+            text: "MindRuntime::start",
+            reason: "CLI must not own the root actor runtime",
+        },
+    ];
+
+    let violations = forbidden_fragments
+        .iter()
+        .flat_map(|fragment| main.violations_for(fragment))
+        .collect::<Vec<_>>();
+
+    assert!(
+        violations.is_empty(),
+        "mind CLI database ownership violations:\n{}",
+        violations
+            .iter()
+            .map(SourceViolation::summary)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+#[test]
+fn mind_source_cannot_depend_on_persona_sema() {
+    let forbidden_fragments = [
+        ForbiddenFragment {
+            text: "persona-sema",
+            reason: "mind owns a local Sema layer; no shared persona-sema component",
+        },
+        ForbiddenFragment {
+            text: "persona_sema",
+            reason: "mind owns a local Sema layer; no shared persona-sema crate",
+        },
+    ];
+
+    let violations = SourceTree::new()
+        .source_files()
+        .into_iter()
+        .flat_map(|file| {
+            forbidden_fragments
+                .iter()
+                .flat_map(|fragment| file.violations_for(fragment))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        violations.is_empty(),
+        "persona-sema dependency violations:\n{}",
+        violations
+            .iter()
+            .map(SourceViolation::summary)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+#[test]
+fn mind_source_cannot_project_lock_files_or_live_beads_backend() {
+    let forbidden_fragments = [
+        ForbiddenFragment {
+            text: "operator.lock",
+            reason: "mind replaces lock files instead of projecting them",
+        },
+        ForbiddenFragment {
+            text: "designer.lock",
+            reason: "mind replaces lock files instead of projecting them",
+        },
+        ForbiddenFragment {
+            text: ".beads",
+            reason: "mind may import BEADS aliases, not use BEADS as a live backend",
+        },
+        ForbiddenFragment {
+            text: "bd ",
+            reason: "mind may import BEADS aliases, not shell out to bd",
+        },
+    ];
+
+    let violations = SourceTree::new()
+        .source_files()
+        .into_iter()
+        .flat_map(|file| {
+            forbidden_fragments
+                .iter()
+                .flat_map(|fragment| file.violations_for(fragment))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        violations.is_empty(),
+        "legacy coordination backend violations:\n{}",
+        violations
+            .iter()
+            .map(SourceViolation::summary)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+#[test]
 fn trace_phase_actor_cannot_float_without_parent_edge() {
     let manifest = ActorManifest::persona_mind_phase_one();
     let missing_parents = manifest
@@ -518,10 +640,12 @@ async fn parallel_runtimes_cannot_share_registry_names_or_memory() {
         }))
         .await;
 
-    let MindReply::OpeningReceipt(first_receipt) = first_reply.reply().expect("first reply exists") else {
+    let MindReply::OpeningReceipt(first_receipt) = first_reply.reply().expect("first reply exists")
+    else {
         panic!("expected first opened reply");
     };
-    let MindReply::OpeningReceipt(second_receipt) = second_reply.reply().expect("second reply exists")
+    let MindReply::OpeningReceipt(second_receipt) =
+        second_reply.reply().expect("second reply exists")
     else {
         panic!("expected second opened reply");
     };
