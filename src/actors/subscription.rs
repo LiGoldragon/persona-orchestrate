@@ -8,17 +8,9 @@ pub(super) struct SubscriptionSupervisorActor {
     post_commit_count: u64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub(super) struct Arguments {
     pub post_commit_count: u64,
-}
-
-impl Default for Arguments {
-    fn default() -> Self {
-        Self {
-            post_commit_count: 0,
-        }
-    }
 }
 
 #[allow(dead_code)]

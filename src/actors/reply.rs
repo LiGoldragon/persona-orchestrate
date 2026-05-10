@@ -10,17 +10,9 @@ pub(super) struct ReplySupervisorActor {
     shaped_reply_count: u64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub(super) struct Arguments {
     pub shaped_reply_count: u64,
-}
-
-impl Default for Arguments {
-    fn default() -> Self {
-        Self {
-            shaped_reply_count: 0,
-        }
-    }
 }
 
 pub struct ShapeReply {
