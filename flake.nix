@@ -49,6 +49,45 @@
             inherit cargoArtifacts;
             cargoTestExtraArgs = "--test cli";
           });
+          cli-binary = pkgs.runCommand "mind-cli-binary" {} ''
+            set -euo pipefail
+
+            workspace="$(mktemp -d)"
+            socket="$workspace/mind.sock"
+            store="$workspace/mind.redb"
+
+            ${self.packages.${system}.default}/bin/mind daemon \
+              --socket "$socket" \
+              --store "$store" &
+            daemon="$!"
+            trap 'kill "$daemon" 2>/dev/null || true' EXIT
+
+            for attempt in $(seq 1 100); do
+              if [ -S "$socket" ]; then
+                break
+              fi
+              sleep 0.05
+            done
+            test -S "$socket"
+
+            ${self.packages.${system}.default}/bin/mind \
+              --socket "$socket" \
+              --actor operator \
+              '(RoleClaim Operator [(Path "/git/github.com/LiGoldragon/persona-mind")] "claim from binary check")' \
+              > "$workspace/claim.out"
+            grep -F '(ClaimAcceptance Operator [(Path "/git/github.com/LiGoldragon/persona-mind")])' \
+              "$workspace/claim.out"
+
+            ${self.packages.${system}.default}/bin/mind \
+              --socket "$socket" \
+              --actor operator \
+              '(RoleObservation)' \
+              > "$workspace/observe.out"
+            grep -F '(RoleStatus Operator [(ClaimEntry (Path "/git/github.com/LiGoldragon/persona-mind") "claim from binary check")]' \
+              "$workspace/observe.out"
+
+            touch "$out"
+          '';
           test-doc = craneLib.cargoTest (commonArgs // {
             inherit cargoArtifacts;
             cargoTestExtraArgs = "--doc";
