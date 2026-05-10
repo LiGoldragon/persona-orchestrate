@@ -14,9 +14,10 @@ command-line mind.*
 
 `persona-mind` owns Persona's central workspace state: role claims, handoffs,
 activity, work items, notes, dependencies, decisions, aliases, event history,
-and ready/blocked views. It replaces the lock-file orchestration model over
-time. Lock files and BEADS are compatibility or import surfaces; they are not
-the destination state model.
+and ready/blocked views. It replaces the lock-file orchestration model. Lock
+files are not part of this implementation; they are a temporary workspace
+coordination mechanism that will be retired when agents switch to `mind`. BEADS
+entries may be imported as history/aliases, but BEADS is not a live backend.
 
 All public operations enter through `signal-persona-mind` records. The
 command-line surface is the `mind` binary: exactly one NOTA request record in,
@@ -32,7 +33,7 @@ exist as trace witnesses become real actors when they own state, IO, failure,
 identity, time, IDs, or transaction ordering.
 
 ```mermaid
-flowchart LR
+graph LR
     text[one NOTA request] --> cli[mind CLI]
     cli --> decode[NOTA decode]
     decode --> request[MindRequest]
@@ -73,8 +74,12 @@ The command-line mind is a thin client boundary over a long-lived daemon. The
 daemon owns the runtime path; tests may still use the in-process runtime until
 the daemon host is implemented.
 
+Command-line interfaces in this workspace interact with daemons. The
+command-line mind is not a one-shot state owner and should not reopen that
+decision.
+
 ```mermaid
-flowchart TB
+graph TB
     argv[argv record] --> input[MindInput]
     input --> text_decoder[MindTextDecoder]
     text_decoder --> request[MindRequest]
@@ -110,7 +115,7 @@ operation IDs, and display IDs are infrastructure/store concerns.
 Current long-lived actors:
 
 ```mermaid
-flowchart TB
+graph TB
     root[MindRoot] --> config[Config]
     root --> ingress[IngressSupervisor]
     root --> dispatch[DispatchSupervisor]
@@ -124,7 +129,7 @@ flowchart TB
 Current request path for implemented memory/work operations:
 
 ```mermaid
-flowchart LR
+graph LR
     caller[caller] --> root[MindRoot]
     root --> ingress[IngressSupervisor]
     ingress --> dispatch[DispatchSupervisor]
@@ -170,7 +175,7 @@ Current implementation:
 Destination:
 
 ```mermaid
-flowchart TB
+graph TB
     flow[domain flow actor] --> intent[typed write intent]
     intent --> writer[SemaWriter]
     writer --> ids[IdMint]
@@ -182,10 +187,10 @@ flowchart TB
 ```
 
 The durable store is one workspace-local `mind.redb` owned by
-`persona-mind`. The storage mechanism is `sema`; Persona-specific storage
-helpers may come through `persona-sema`, but no other component writes
-`mind.redb` directly. Other components talk to mind through
-`signal-persona-mind`.
+`persona-mind`. The storage mechanism is `sema`; the mind-specific Sema layer
+and table declarations belong to `persona-mind` because mind owns this state.
+There is no shared `persona-sema` layer for mind state. Other components talk
+to mind through `signal-persona-mind`.
 
 Recommended tables:
 
@@ -218,7 +223,7 @@ The first `mind` replacement for `tools/orchestrate` must implement:
 | `ActivityQuery` | read recent activity with typed filters. |
 
 ```mermaid
-flowchart TB
+graph TB
     claim[RoleClaim] --> normalize[ScopeNormalizer]
     normalize --> conflict[ClaimConflictDetector]
     conflict --> writer[SemaWriter]
@@ -227,9 +232,9 @@ flowchart TB
     conflict --> rejected[ClaimRejection]
 ```
 
-This replaces lock-file ownership. Transitional projections may exist only as
-disposable compatibility outputs. They must not become a second source of
-truth.
+This replaces lock-file ownership. Do not add lock-file projections to
+`persona-mind`; migration away from lock files is handled at the workspace
+workflow boundary, not inside the mind implementation.
 
 ## 6 · Work and Memory Graph
 
@@ -256,7 +261,7 @@ Required graph invariants:
 - Queries do not mutate state.
 
 ```mermaid
-flowchart LR
+graph LR
     item[Item] --> edge[Edge]
     edge --> blocker[Blocking item]
     note[Note] --> item
@@ -301,7 +306,8 @@ This repo does not own:
   `Arc<Mutex<T>>` crosses actor boundaries.
 - Queries never send write intents.
 - Writes append typed events.
-- Durable truth lives in `mind.redb`; lock files and BEADS are transitional.
+- Durable truth lives in `mind.redb`; lock files are outside this
+  implementation and BEADS is import/history only.
 
 ## 9 · Architectural-truth Tests
 
@@ -317,7 +323,7 @@ constraints:
 | `claim_commit_appends_activity` | activity is automatic. |
 | `query_ready_uses_reader_without_writer` | read path cannot mutate state. |
 | `mind_store_survives_process_restart` | durable `mind.redb` exists. |
-| `lock_files_are_not_source_of_truth` | deleting projections cannot delete state. |
+| `mind_runs_without_lock_file_projection` | lock files are outside the implementation. |
 | `beads_import_creates_alias_only` | no live BEADS bridge. |
 
 ## Code Map
@@ -356,4 +362,3 @@ tests/smoke.rs             claim reducer tests
 - `~/primary/reports/designer/100-persona-mind-architecture-proposal.md`
 - `~/primary/reports/designer/106-actor-discipline-status-and-questions.md`
 - `../signal-persona-mind/ARCHITECTURE.md`
-- `../persona-sema/ARCHITECTURE.md`
