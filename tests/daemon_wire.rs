@@ -1,9 +1,11 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use persona_mind::{MindClient, MindDaemon, MindDaemonEndpoint, StoreLocation};
+use persona_mind::{MindClient, MindDaemon, MindDaemonEndpoint, MindFrameCodec, StoreLocation};
 use signal_persona_mind::{
-    ActorName, ItemKind, ItemPriority, MindReply, MindRequest, Opening, TextBody, Title,
+    ActorName, Frame, FrameBody, ItemKind, ItemPriority, MindReply, MindRequest, Opening, TextBody,
+    Title,
 };
+use tokio::net::UnixStream;
 
 struct SocketFixture {
     endpoint: MindDaemonEndpoint,
@@ -49,18 +51,14 @@ impl SocketFixture {
 #[tokio::test]
 async fn daemon_round_trip_uses_signal_frames_over_socket() {
     let fixture = SocketFixture::new("round-trip");
-    let daemon = MindDaemon::new(
-        fixture.endpoint(),
-        fixture.store(),
-        ActorName::new("operator"),
-    )
-    .bind()
-    .await
-    .expect("daemon binds");
+    let daemon = MindDaemon::new(fixture.endpoint(), fixture.store())
+        .bind()
+        .await
+        .expect("daemon binds");
     let endpoint = daemon.endpoint().clone();
     let server = tokio::spawn(async move { daemon.serve_one().await });
 
-    let client = MindClient::new(endpoint);
+    let client = MindClient::new(endpoint, ActorName::new("operator"));
     let client_reply = client
         .submit(fixture.request())
         .await
@@ -78,9 +76,65 @@ async fn daemon_round_trip_uses_signal_frames_over_socket() {
 }
 
 #[tokio::test]
+async fn daemon_uses_signal_auth_for_actor_identity() {
+    let fixture = SocketFixture::new("auth-identity");
+    let daemon = MindDaemon::new(fixture.endpoint(), fixture.store())
+        .bind()
+        .await
+        .expect("daemon binds");
+    let endpoint = daemon.endpoint().clone();
+    let server = tokio::spawn(async move { daemon.serve_one().await });
+
+    let client = MindClient::new(endpoint, ActorName::new("designer"));
+    let client_reply = client
+        .submit(fixture.request())
+        .await
+        .expect("client receives reply frame");
+    server
+        .await
+        .expect("daemon task joins")
+        .expect("daemon serves one request");
+
+    let MindReply::OpeningReceipt(receipt) = client_reply else {
+        panic!("expected opening receipt");
+    };
+    assert_eq!(receipt.event.header.actor, ActorName::new("designer"));
+}
+
+#[tokio::test]
+async fn daemon_rejects_request_frames_without_auth() {
+    let fixture = SocketFixture::new("missing-auth");
+    let daemon = MindDaemon::new(fixture.endpoint(), fixture.store())
+        .bind()
+        .await
+        .expect("daemon binds");
+    let endpoint = daemon.endpoint().clone();
+    let server = tokio::spawn(async move { daemon.serve_one().await });
+
+    let codec = MindFrameCodec::default();
+    let mut stream = UnixStream::connect(endpoint.as_path())
+        .await
+        .expect("client connects to daemon");
+    let frame = Frame::new(FrameBody::Request(signal_core::Request::assert(
+        fixture.request(),
+    )));
+    codec
+        .write_frame(&mut stream, &frame)
+        .await
+        .expect("client writes unauthenticated frame");
+
+    let error = server
+        .await
+        .expect("daemon task joins")
+        .expect_err("daemon rejects missing signal auth");
+
+    assert!(matches!(error, persona_mind::Error::MissingAuthProof));
+}
+
+#[tokio::test]
 async fn client_cannot_reply_without_daemon_signal_frame() {
     let fixture = SocketFixture::new("no-daemon");
-    let client = MindClient::new(fixture.endpoint());
+    let client = MindClient::new(fixture.endpoint(), ActorName::new("operator"));
     let error = client
         .submit(fixture.request())
         .await

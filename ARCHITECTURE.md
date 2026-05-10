@@ -65,8 +65,8 @@ The crate exposes:
 | `actors::ActorTrace` | Per-request path witness for architectural-truth tests. |
 | `MindDaemonEndpoint` | Unix-socket endpoint value for the local daemon transport. |
 | `MindFrameCodec` | Length-prefixed Signal frame codec used by client and daemon. |
-| `MindClient` | Thin local client that submits one Signal request frame and reads one reply frame. |
-| `MindDaemon` | Bound one-shot daemon harness around `MindRoot`; staging surface for the long-running daemon. |
+| `MindClient` | Thin local client that attaches Signal auth, submits one request frame, and reads one reply frame. |
+| `MindDaemon` | Bound one-shot daemon harness around `MindRoot`; reads actor identity from Signal auth before entering the root actor. |
 | `mind` binary | Future command-line mind; currently scaffold-only. |
 
 The public protocol is not defined here. `signal-persona-mind` owns the
@@ -307,8 +307,12 @@ This repo does not own:
   it does not own `MindRoot`.
 - `MindClient` sends one length-prefixed Signal request frame to the daemon and
   expects one length-prefixed Signal reply frame back.
+- `MindClient` supplies caller identity through Signal auth, not through the
+  request payload.
 - `MindDaemon` routes request frames through `MindRoot`; it does not construct
   success replies without the actor path.
+- `MindDaemon` rejects request frames that do not carry a recognized Signal
+  auth proof.
 - A missing daemon cannot produce a client reply.
 - The daemon owns `MindRoot` for its process lifetime.
 - The daemon owns `mind.redb`; the CLI never opens the database.
@@ -360,6 +364,8 @@ constraints:
 | `claim_commit_appends_activity` | activity is automatic. |
 | `query_ready_uses_reader_without_writer` | read path cannot mutate state. |
 | `daemon_round_trip_uses_signal_frames_over_socket` | one socket request/reply crosses the Signal-frame transport and reaches `MindRoot`. |
+| `daemon_uses_signal_auth_for_actor_identity` | caller identity is derived from Signal auth before building `MindEnvelope`. |
+| `daemon_rejects_request_frames_without_auth` | daemon cannot accept unauthenticated request frames. |
 | `client_cannot_reply_without_daemon_signal_frame` | clients cannot fabricate successful daemon replies. |
 | `mind_store_survives_process_restart` | durable `mind.redb` exists. |
 | `mind_runs_without_lock_file_projection` | lock files are outside the implementation. |

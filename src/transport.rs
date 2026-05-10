@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use signal_core::{Reply, Request};
+use signal_core::{AuthProof, LocalOperatorProof, Reply, Request};
 use signal_persona_mind::{ActorName, Frame, FrameBody, MindReply, MindRequest};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
@@ -81,8 +81,10 @@ impl MindFrameCodec {
         Ok(())
     }
 
-    pub fn request_frame(&self, request: MindRequest) -> Frame {
-        Frame::new(FrameBody::Request(Request::assert(request)))
+    pub fn request_frame(&self, actor: &ActorName, request: MindRequest) -> Frame {
+        Frame::new(FrameBody::Request(Request::assert(request))).with_auth(
+            AuthProof::LocalOperator(LocalOperatorProof::new(actor.as_str())),
+        )
     }
 
     pub fn reply_frame(&self, reply: MindReply) -> Frame {
@@ -93,6 +95,13 @@ impl MindFrameCodec {
         match frame.into_body() {
             FrameBody::Request(Request::Operation { payload, .. }) => Ok(payload),
             _ => Err(Error::UnexpectedFrame("expected mind request operation")),
+        }
+    }
+
+    pub fn actor_from_frame(&self, frame: &Frame) -> Result<ActorName> {
+        match frame.auth() {
+            Some(AuthProof::LocalOperator(proof)) => Ok(ActorName::new(proof.operator())),
+            None => Err(Error::MissingAuthProof),
         }
     }
 
@@ -112,20 +121,22 @@ impl Default for MindFrameCodec {
 
 pub struct MindClient {
     endpoint: MindDaemonEndpoint,
+    actor: ActorName,
     codec: MindFrameCodec,
 }
 
 impl MindClient {
-    pub fn new(endpoint: MindDaemonEndpoint) -> Self {
+    pub fn new(endpoint: MindDaemonEndpoint, actor: ActorName) -> Self {
         Self {
             endpoint,
+            actor,
             codec: MindFrameCodec::default(),
         }
     }
 
     pub async fn submit(&self, request: MindRequest) -> Result<MindReply> {
         let mut stream = UnixStream::connect(self.endpoint.as_path()).await?;
-        let frame = self.codec.request_frame(request);
+        let frame = self.codec.request_frame(&self.actor, request);
         self.codec.write_frame(&mut stream, &frame).await?;
         let reply = self.codec.read_frame(&mut stream).await?;
         self.codec.reply_from_frame(reply)
@@ -135,16 +146,14 @@ impl MindClient {
 pub struct MindDaemon {
     endpoint: MindDaemonEndpoint,
     store: StoreLocation,
-    actor: ActorName,
     codec: MindFrameCodec,
 }
 
 impl MindDaemon {
-    pub fn new(endpoint: MindDaemonEndpoint, store: StoreLocation, actor: ActorName) -> Self {
+    pub fn new(endpoint: MindDaemonEndpoint, store: StoreLocation) -> Self {
         Self {
             endpoint,
             store,
-            actor,
             codec: MindFrameCodec::default(),
         }
     }
@@ -154,7 +163,6 @@ impl MindDaemon {
         let root = MindRoot::start(MindRootArguments::new(self.store)).await?;
         Ok(BoundMindDaemon {
             endpoint: self.endpoint,
-            actor: self.actor,
             codec: self.codec,
             listener,
             root,
@@ -164,7 +172,6 @@ impl MindDaemon {
 
 pub struct BoundMindDaemon {
     endpoint: MindDaemonEndpoint,
-    actor: ActorName,
     codec: MindFrameCodec,
     listener: UnixListener,
     root: crate::ActorRef<MindRoot>,
@@ -185,8 +192,9 @@ impl BoundMindDaemon {
     async fn serve_next(&self) -> Result<MindReply> {
         let (mut stream, _address) = self.listener.accept().await?;
         let frame = self.codec.read_frame(&mut stream).await?;
+        let actor = self.codec.actor_from_frame(&frame)?;
         let request = self.codec.request_from_frame(frame)?;
-        let envelope = MindEnvelope::new(self.actor.clone(), request);
+        let envelope = MindEnvelope::new(actor, request);
         let root_reply = self
             .root
             .ask(SubmitEnvelope { envelope })
