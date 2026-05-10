@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use persona_mind::actors::{ActorKind, ActorManifest, ActorResidency};
 use persona_mind::{MindEnvelope, MindRuntime, StoreLocation};
 use signal_persona_mind::{
-    ActorName, Body, Kind, MindReply, MindRequest, Opening, Priority, Query, QueryKind, QueryLimit,
+    ActorName, TextBody, ItemKind, MindReply, MindRequest, Opening, ItemPriority, Query, QueryKind, QueryLimit,
     RoleClaim, RoleName, ScopeReason, ScopeReference, Title, WirePath,
 };
 
@@ -503,18 +503,18 @@ async fn parallel_runtimes_cannot_share_registry_names_or_memory() {
 
     let first_reply = first_runtime
         .submit(MindRequest::Opening(Opening {
-            kind: Kind::Task,
-            priority: Priority::High,
+            kind: ItemKind::Task,
+            priority: ItemPriority::High,
             title: Title::new("First runtime item"),
-            body: Body::new("only the first runtime sees this"),
+            body: TextBody::new("only the first runtime sees this"),
         }))
         .await;
     let second_reply = second_runtime
         .submit(MindRequest::Opening(Opening {
-            kind: Kind::Task,
-            priority: Priority::Low,
+            kind: ItemKind::Task,
+            priority: ItemPriority::Low,
             title: Title::new("Second runtime item"),
-            body: Body::new("only the second runtime sees this"),
+            body: TextBody::new("only the second runtime sees this"),
         }))
         .await;
 

@@ -1,7 +1,7 @@
 use persona_mind::actors::{ActorKind, ActorManifest, ActorResidency, TraceAction};
 use persona_mind::{MindEnvelope, MindRuntime, StoreLocation};
 use signal_persona_mind::{
-    ActorName, Body, Kind, MindReply, MindRequest, Opening, Priority, Query, QueryKind, QueryLimit,
+    ActorName, TextBody, ItemKind, MindReply, MindRequest, Opening, ItemPriority, Query, QueryKind, QueryLimit,
     Title,
 };
 
@@ -70,10 +70,10 @@ async fn open_item_runs_through_kameo_write_path() {
     let fixture = ActorFixture::new().await;
     let response = fixture
         .submit(MindRequest::Opening(Opening {
-            kind: Kind::Task,
-            priority: Priority::High,
+            kind: ItemKind::Task,
+            priority: ItemPriority::High,
             title: Title::new("Implement Kameo-backed mind"),
-            body: Body::new("Phase one actor path"),
+            body: TextBody::new("Phase one actor path"),
         }))
         .await;
 
@@ -117,10 +117,10 @@ async fn query_path_uses_read_actor_without_writer() {
     let fixture = ActorFixture::new().await;
     let _opened = fixture
         .submit(MindRequest::Opening(Opening {
-            kind: Kind::Task,
-            priority: Priority::Normal,
+            kind: ItemKind::Task,
+            priority: ItemPriority::Normal,
             title: Title::new("Query actor path"),
-            body: Body::new("Read path witness"),
+            body: TextBody::new("Read path witness"),
         }))
         .await;
 

@@ -1,8 +1,8 @@
 use persona_mind::{MemoryState, StoreLocation};
 use signal_persona_mind::{
-    AliasAssignment, Body, EdgeKind, EdgeTarget, Event, ExternalAlias, ExternalReference,
-    ItemReference, Kind, Link, LinkTarget, MindReply, MindRequest, NoteSubmission, Opening,
-    Priority, Query, QueryKind, QueryLimit, RejectionReason, ReportPath, StableItemId, Status,
+    AliasAssignment, TextBody, EdgeKind, EdgeTarget, Event, ExternalAlias, ExternalReference,
+    ItemReference, ItemKind, Link, LinkTarget, MindReply, MindRequest, NoteSubmission, Opening,
+    ItemPriority, Query, QueryKind, QueryLimit, RejectionReason, ReportPath, StableItemId, ItemStatus,
     StatusChange, Title, View,
 };
 
@@ -19,10 +19,10 @@ impl Fixture {
 
     fn open_task(&self, title: &str) -> StableItemId {
         match self.dispatch(MindRequest::Opening(Opening {
-            kind: Kind::Task,
-            priority: Priority::Normal,
+            kind: ItemKind::Task,
+            priority: ItemPriority::Normal,
             title: Title::new(title),
-            body: Body::new("body"),
+            body: TextBody::new("body"),
         })) {
             MindReply::OpeningReceipt(receipt) => receipt.event.item.id,
             other => panic!("expected open receipt, got {other:?}"),
@@ -31,10 +31,10 @@ impl Fixture {
 
     fn open_decision(&self, title: &str) -> StableItemId {
         match self.dispatch(MindRequest::Opening(Opening {
-            kind: Kind::Decision,
-            priority: Priority::High,
+            kind: ItemKind::Decision,
+            priority: ItemPriority::High,
             title: Title::new(title),
-            body: Body::new("decision body"),
+            body: TextBody::new("decision body"),
         })) {
             MindReply::OpeningReceipt(receipt) => receipt.event.item.id,
             other => panic!("expected open receipt, got {other:?}"),
@@ -44,7 +44,7 @@ impl Fixture {
     fn add_note(&self, item: &StableItemId, body: &str) {
         match self.dispatch(MindRequest::NoteSubmission(NoteSubmission {
             item: ItemReference::Stable(item.clone()),
-            body: Body::new(body),
+            body: TextBody::new(body),
         })) {
             MindReply::NoteReceipt(_) => {}
             other => panic!("expected note receipt, got {other:?}"),
@@ -75,7 +75,7 @@ impl Fixture {
         }
     }
 
-    fn change_status(&self, item: &StableItemId, status: Status) {
+    fn change_status(&self, item: &StableItemId, status: ItemStatus) {
         match self.dispatch(MindRequest::StatusChange(StatusChange {
             item: ItemReference::Stable(item.clone()),
             status,
@@ -128,7 +128,7 @@ fn opening_item_persists_projection_and_event() {
 
     assert_eq!(view.items.len(), 1);
     assert_eq!(view.items[0].id, item);
-    assert_eq!(view.items[0].status, Status::Open);
+    assert_eq!(view.items[0].status, ItemStatus::Open);
     assert_eq!(view.items[0].title, Title::new("Build typed mind graph"));
     assert!(
         view.events
@@ -149,7 +149,7 @@ fn adding_note_attaches_note_to_item_view() {
     assert_eq!(view.notes[0].item, item);
     assert_eq!(
         view.notes[0].body,
-        Body::new("The note must be queryable from the item.")
+        TextBody::new("The note must be queryable from the item.")
     );
     assert!(
         view.events
@@ -174,7 +174,7 @@ fn depends_on_edge_controls_ready_and_blocked_views() {
     assert_eq!(ready.items.len(), 1);
     assert_eq!(ready.items[0].id, blocker);
 
-    fixture.change_status(&blocker, Status::Closed);
+    fixture.change_status(&blocker, ItemStatus::Closed);
 
     let ready = fixture.query(QueryKind::Ready);
     assert_eq!(ready.items.len(), 1);
@@ -206,7 +206,7 @@ fn report_reference_is_an_edge_not_an_item_kind() {
     let view = fixture.query(QueryKind::ByItem(ItemReference::Stable(item.clone())));
 
     assert_eq!(view.items.len(), 1);
-    assert_eq!(view.items[0].kind, Kind::Decision);
+    assert_eq!(view.items[0].kind, ItemKind::Decision);
     assert_eq!(view.edges.len(), 1);
     assert_eq!(view.edges[0].source, item);
     assert_eq!(view.edges[0].kind, EdgeKind::References);
@@ -226,7 +226,7 @@ fn unknown_item_rejects_mutations_and_queries() {
     assert_eq!(
         fixture.rejected(MindRequest::NoteSubmission(NoteSubmission {
             item: ItemReference::Stable(missing.clone()),
-            body: Body::new("lost"),
+            body: TextBody::new("lost"),
         })),
         RejectionReason::UnknownItem
     );

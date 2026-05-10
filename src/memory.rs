@@ -9,9 +9,9 @@ use crate::MindEnvelope;
 use signal_persona_mind::{
     ActorName, AliasAddedEvent, AliasAssignment, DisplayId, Edge, EdgeAddedEvent, EdgeKind,
     EdgeTarget, Event, EventHeader, EventSeq, ExternalAlias, Item, ItemOpenedEvent, ItemReference,
-    Kind, Link, LinkTarget, MindReply, MindRequest, Note, NoteAddedEvent, NoteSubmission, Opening,
+    ItemKind, Link, LinkTarget, MindReply, MindRequest, Note, NoteAddedEvent, NoteSubmission, Opening,
     OpeningReceipt, OperationId, Query, QueryKind, QueryLimit, Rejection, RejectionReason,
-    StableItemId, Status, StatusChange, StatusChangedEvent, View,
+    StableItemId, ItemStatus, StatusChange, StatusChangedEvent, View,
 };
 
 pub struct MemoryState {
@@ -95,7 +95,7 @@ impl Graph {
             display_id: DisplayIdMint::new(self.next_item).into_display_id(),
             aliases: Vec::new(),
             kind: opening.kind,
-            status: Status::Open,
+            status: ItemStatus::Open,
             priority: opening.priority,
             title: opening.title,
             body: opening.body,
@@ -196,7 +196,7 @@ impl Graph {
         let reply = match query.kind {
             QueryKind::Ready => self.ready_view(limit),
             QueryKind::Blocked => self.blocked_view(limit),
-            QueryKind::Open => self.status_view(Status::Open, limit),
+            QueryKind::Open => self.status_view(ItemStatus::Open, limit),
             QueryKind::RecentEvents => self.recent_events_view(limit),
             QueryKind::ByItem(reference) => {
                 let Some(item) = self.resolve_item(&reference) else {
@@ -221,7 +221,7 @@ impl Graph {
         self.view_for_items(
             self.items
                 .iter()
-                .filter(|item| item.status == Status::Open && self.item_is_ready(&item.id))
+                .filter(|item| item.status == ItemStatus::Open && self.item_is_ready(&item.id))
                 .take(limit)
                 .cloned()
                 .collect(),
@@ -232,14 +232,14 @@ impl Graph {
         self.view_for_items(
             self.items
                 .iter()
-                .filter(|item| item.status == Status::Open && !self.item_is_ready(&item.id))
+                .filter(|item| item.status == ItemStatus::Open && !self.item_is_ready(&item.id))
                 .take(limit)
                 .cloned()
                 .collect(),
         )
     }
 
-    fn kind_view(&self, kind: Kind, limit: usize) -> View {
+    fn kind_view(&self, kind: ItemKind, limit: usize) -> View {
         self.view_for_items(
             self.items
                 .iter()
@@ -250,7 +250,7 @@ impl Graph {
         )
     }
 
-    fn status_view(&self, status: Status, limit: usize) -> View {
+    fn status_view(&self, status: ItemStatus, limit: usize) -> View {
         self.view_for_items(
             self.items
                 .iter()
@@ -335,7 +335,7 @@ impl Graph {
             match &edge.target {
                 EdgeTarget::Item(target) => self
                     .item_by_id(target)
-                    .map(|target_item| target_item.status == Status::Closed)
+                    .map(|target_item| target_item.status == ItemStatus::Closed)
                     .unwrap_or(false),
                 EdgeTarget::External(_) => false,
             }
