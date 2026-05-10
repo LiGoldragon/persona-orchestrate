@@ -1,210 +1,324 @@
 # persona-mind — architecture
 
-*Kameo-backed central state machine for Persona coordination and memory.*
+*Central Kameo actor system for Persona coordination, work memory, and the
+command-line mind.*
 
-> Status: Phase 1 is `kameo`-backed and in-process. The runtime starts a
-> `kameo` tree, routes typed `MindEnvelope` requests through named
-> supervisor actors, and proves the path with manifest/trace tests. Durable
-> `persona-sema` tables are the next storage substrate; current state is still
-> held by in-memory mind reducers behind the mind-owned state/write path.
+> Status: the crate has a real Kameo runtime and an in-memory work graph
+> reducer. The `mind` binary and daemon are still scaffold-level. Durable
+> `mind.redb`, NOTA text projection, local daemon transport, and role/activity
+> flows are the next foundational implementation wave.
 
 ---
 
 ## 0 · TL;DR
 
-`persona-mind` owns Persona's workspace coordination truth: role claims,
-handoffs, activity, work/memory items, notes, dependencies, aliases, events,
-and ready-work views. It consumes `signal-persona-mind`; it does not own
-router delivery, harness lifecycle, terminal adapters, or the sema database
-library.
+`persona-mind` owns Persona's central workspace state: role claims, handoffs,
+activity, work items, notes, dependencies, decisions, aliases, event history,
+and ready/blocked views. It replaces the lock-file orchestration model over
+time. Lock files and BEADS are compatibility or import surfaces; they are not
+the destination state model.
 
-All public operations enter as a typed `MindEnvelope { actor, request }`. The
-actor field is infrastructure context supplied before persistence; request
-payloads do not mint sender identity. The current runtime is short-lived and
-in-process for tests and the future `mind` CLI, but it already uses the same
-actor path a long-lived host can reuse.
+All public operations enter through `signal-persona-mind` records. The
+command-line surface is the `mind` binary: exactly one NOTA request record in,
+exactly one NOTA reply record out. The binary is a thin client, not a second
+command language. It decodes NOTA into `MindRequest`, resolves caller identity,
+wraps the request in a Signal frame, sends that frame to a long-lived
+`persona-mind` daemon, and prints the daemon's NOTA `MindReply`.
+
+The daemon owns `MindRoot` for its process lifetime. `MindRuntime` is the
+current in-process facade used by tests and early scaffolding; the production
+shape is daemon-owned root plus thin CLI clients. Request phases that currently
+exist as trace witnesses become real actors when they own state, IO, failure,
+identity, time, IDs, or transaction ordering.
 
 ```mermaid
 flowchart LR
-    caller["agent or CLI"] --> envelope["MindEnvelope"]
-    envelope --> root["MindRoot"]
-    root --> ingress["IngressSupervisor"]
-    ingress --> dispatch["DispatchSupervisor"]
-    dispatch --> domain["DomainSupervisor"]
-    dispatch --> views["ViewSupervisor"]
-    domain --> store["StoreSupervisor (mind state/write plane)"]
-    views --> store
-    store --> reducer["memory reducers"]
-    store -. "next storage substrate" .-> sema["persona-sema"]
-    sema -.-> db[("mind.redb")]
-    dispatch --> reply["ReplySupervisor"]
+    text[one NOTA request] --> cli[mind CLI]
+    cli --> decode[NOTA decode]
+    decode --> request[MindRequest]
+    request --> frame[Signal frame]
+    frame --> daemon[persona mind daemon]
+    daemon --> identity[caller identity]
+    identity --> envelope[MindEnvelope]
+    envelope --> root[MindRoot]
+    root --> store[mind state writer]
+    store --> db[mind redb]
+    root --> reply[MindReply]
+    reply --> encode[NOTA encode]
+    encode --> text_reply[one NOTA reply]
 ```
 
-## 1 · Component Surface
+## 1 · Public Surface
 
 The crate exposes:
 
-- `MindEnvelope` — caller identity plus one `MindRequest`.
-- `MindRuntime` — in-process `kameo` facade used by tests and future CLI
-  entry.
-- `MindRuntime` — domain wrapper over the root `ActorRef`; `MindRoot` is the
-  only bare Kameo spawn site.
-- `actors::ActorManifest` — topology witness naming root, long-lived
-  supervisors, and trace-phase actors.
-- `actors::ActorTrace` — per-request witness proving which actor planes ran.
-- `MemoryState` — current in-memory memory/work reducer owned by
-  the mind state/write actor path.
-- `ClaimState` — current in-memory claim reducer used by existing claim tests.
+| Surface | Purpose |
+|---|---|
+| `MindEnvelope` | Infrastructure-supplied caller identity plus one `MindRequest`. |
+| `MindRuntime` | Current in-process Kameo facade for tests and daemon scaffolding. |
+| `MindRuntimeReply` | Typed reply plus actor trace witness. |
+| `MemoryState` | Current in-memory work/memory reducer used behind the actor path. |
+| `ClaimState` | Current in-memory claim reducer used by claim-scope tests. |
+| `actors::ActorManifest` | Runtime topology witness. |
+| `actors::ActorTrace` | Per-request path witness for architectural-truth tests. |
+| `mind` binary | Future command-line mind; currently scaffold-only. |
 
-The `mind` binary is still a scaffold. It must become a one-NOTA-record input
-to one-NOTA-record reply surface over the same `MindRuntime` path; it must not
-grow a second command language.
+The public protocol is not defined here. `signal-persona-mind` owns the
+request and reply records. `persona-mind` consumes those records and applies
+state transitions.
 
-## 2 · Runtime Topology
+## 2 · Command-line Mind
 
-Phase 1 starts these supervised `kameo` actors:
+The command-line mind is a thin client boundary over a long-lived daemon. The
+daemon owns the runtime path; tests may still use the in-process runtime until
+the daemon host is implemented.
 
 ```mermaid
 flowchart TB
-    root["MindRoot"]
-    root --> config["Config"]
-    root --> ingress["IngressSupervisor"]
-    root --> dispatch["DispatchSupervisor"]
-    root --> domain["DomainSupervisor"]
-    root --> store["StoreSupervisor (mind state/write plane)"]
-    root --> views["ViewSupervisor"]
-    root --> subscriptions["SubscriptionSupervisor"]
-    root --> reply["ReplySupervisor"]
-
-    ingress --> request_session["RequestSession trace phase"]
-    ingress --> identity["CallerIdentityResolver trace phase"]
-    ingress --> envelope["EnvelopeBuilder trace phase"]
-
-    dispatch --> memory_flow["MemoryFlow trace phase"]
-    dispatch --> query_flow["QueryFlow trace phase"]
-
-    domain --> memory_graph["MemoryGraphSupervisor trace phase"]
-    memory_graph --> item_open["ItemOpen trace phase"]
-    memory_graph --> note_add["NoteAdd trace phase"]
-    memory_graph --> link["Link trace phase"]
-    memory_graph --> status["StatusChange trace phase"]
-    memory_graph --> alias["AliasAdd trace phase"]
-
-    store --> read["SemaReader trace phase"]
-    store --> writer["SemaWriter trace phase"]
-    store --> id["IdMint trace phase"]
-    store --> clock["Clock trace phase"]
-    store --> append["EventAppender trace phase"]
-    store --> commit["Commit trace phase"]
-
-    views --> ready["ReadyWorkView trace phase"]
-    views --> blocked["BlockedWorkView trace phase"]
-    views --> recent["RecentActivityView trace phase"]
-
-    reply --> encode["NotaReplyEncoder trace phase"]
-    reply --> error["ErrorShaper trace phase"]
+    argv[argv record] --> input[MindInput]
+    input --> text_decoder[MindTextDecoder]
+    text_decoder --> request[MindRequest]
+    request --> client_frame[Signal request frame]
+    client_frame --> daemon[persona mind daemon]
+    env[process environment] --> caller[CallerIdentityResolver]
+    caller --> actor[ActorName]
+    daemon --> envelope[MindEnvelope]
+    actor --> envelope
+    envelope --> root[MindRoot]
+    root --> daemon_reply[Signal reply frame]
+    daemon_reply --> text_encoder[MindTextEncoder]
+    text_encoder --> stdout[stdout reply]
 ```
 
-The long-lived supervisors are real actors today. The smaller operation planes
-are trace-phase actors in Phase 1: they are explicit manifest entries and test
-witnesses, and their boundaries are the names that future fine-grained Kameo
-actors must preserve as persistence lands.
+Process-boundary types should be small and data-bearing:
 
-### 2.1 · Kameo Boundary
+| Type | Owns |
+|---|---|
+| `MindCommand` | argv, environment, exit rendering. |
+| `MindInput` | exactly-one-record rule. |
+| `MindTextDecoder` | NOTA decode diagnostics for `MindRequest`. |
+| `CallerIdentityResolver` | mapping process context to `ActorName` / role context. |
+| `MindDaemonEndpoint` | local daemon endpoint default and explicit override. |
+| `MindClient` | local daemon connection and signal-frame exchange. |
+| `MindTextEncoder` | NOTA rendering of `MindReply` / `Rejected`. |
 
-`persona-mind` uses `kameo` directly. No second actor abstraction is required
-before persistence work proceeds. Long-lived actor structs carry state directly;
-message types are per-verb records implemented through Kameo's `Message<T>`
-trait.
+No request payload mints authority. Actor identity, timestamps, event sequence,
+operation IDs, and display IDs are infrastructure/store concerns.
 
-The local `actors::manifest` and `actors::trace` modules are persona-mind
-architecture witnesses. Keep them local until multiple real runtime crates
-duplicate the same concrete API.
+## 3 · Runtime Topology
 
-Kameo actors are data-bearing runtime nouns. Domain behavior belongs on those
-actor structs, reducers owned by those actor structs, or domain wrappers.
-
-## 3 · Request Paths
-
-Memory mutations run through ingress, dispatch, domain, the mind state/write
-plane, and reply:
+Current long-lived actors:
 
 ```mermaid
-sequenceDiagram
-    participant Root as "MindRoot"
-    participant Ingress as "IngressSupervisor"
-    participant Dispatch as "DispatchSupervisor"
-    participant Domain as "DomainSupervisor"
-    participant Store as "StoreSupervisor"
-    participant Reply as "ReplySupervisor"
-
-    Root->>Ingress: MindEnvelope
-    Ingress->>Dispatch: identity-checked envelope
-    Dispatch->>Domain: memory mutation
-    Domain->>Store: write intent
-    Store-->>Domain: MindReply
-    Domain-->>Dispatch: reply plus ActorTrace
-    Dispatch->>Reply: shape reply
-    Reply-->>Root: typed reply plus ActorTrace
+flowchart TB
+    root[MindRoot] --> config[Config]
+    root --> ingress[IngressSupervisor]
+    root --> dispatch[DispatchSupervisor]
+    root --> domain[DomainSupervisor]
+    root --> store[StoreSupervisor]
+    root --> views[ViewSupervisor]
+    root --> subscriptions[SubscriptionSupervisor]
+    root --> reply[ReplySupervisor]
 ```
 
-Queries run through `ViewSupervisor` and `SemaReader` trace phases.
-The query trace must not include `SemaWriter`; `tests/actor_topology.rs`
-asserts that ready-work query is read-only by actor path, not by convention.
+Current request path for implemented memory/work operations:
 
-## 4 · State and Ownership
+```mermaid
+flowchart LR
+    caller[caller] --> root[MindRoot]
+    root --> ingress[IngressSupervisor]
+    ingress --> dispatch[DispatchSupervisor]
+    dispatch --> domain[DomainSupervisor]
+    domain --> store[StoreSupervisor]
+    store --> reducer[MemoryState reducer]
+    reducer --> store
+    store --> domain
+    domain --> dispatch
+    dispatch --> reply[ReplySupervisor]
+    reply --> root
+    root --> caller
+```
 
-`StoreSupervisor` is the current internal name for the mind-owned
-state/write plane. It is not a shared store component and does not imply a
-`persona-store` repo. It owns `MemoryState`, which owns a private graph
-reducer. The reducer appends typed `Event` values for memory/work mutations and
-derives item, edge, note, alias, ready, blocked, and recent-event views from
-that state.
+`ActorKind` currently names both real Kameo actors and trace phases. The
+manifest distinguishes them through residency. That is acceptable as a staging
+tool, but stateful phases must graduate into real actors as implementation
+lands.
 
-`MemoryState::dispatch` remains as a reducer test facade. `MindRuntime` users
-call `MindRuntime::submit`, which wraps the same reducer behind the actor
-path. `MemoryState::dispatch_envelope` is the bridge that carries envelope
-actor identity into event headers and note authorship.
+| Trace phase | Graduation trigger |
+|---|---|
+| `NotaDecoder` | owns text diagnostics and parse failure. |
+| `CallerIdentityResolver` | owns caller resolution and authority failure. |
+| `ClaimFlow` / `ClaimConflictDetector` | owns conflict semantics. |
+| `ActivityFlow` / `ActivityAppender` | owns store-stamped activity append. |
+| `SemaWriter` | owns write ordering and transaction failure. |
+| `SemaReader` | owns read snapshots. |
+| `IdMint` | owns stable/display ID collision state. |
+| `Clock` | owns store-supplied time. |
+| `EventAppender` | owns append-only event ordering. |
 
-The durable target is one workspace-local `mind.redb`, opened through
-`persona-sema`. Only the mind state/write actor plane is allowed to commit
-writes.
-Queries use read snapshots and return typed views; they do not repair state
-while answering.
+## 4 · State and Storage
 
-## 5 · Boundaries
+Current implementation:
+
+- `StoreSupervisor` owns `MemoryState`.
+- `MemoryState` owns a private in-memory graph.
+- Work/memory mutations append typed `Event` values.
+- Queries read the in-memory graph and produce typed `View` replies.
+- Role claim/release/handoff/activity requests are present in the contract but
+  not fully routed through the runtime yet.
+
+Destination:
+
+```mermaid
+flowchart TB
+    flow[domain flow actor] --> intent[typed write intent]
+    intent --> writer[SemaWriter]
+    writer --> ids[IdMint]
+    writer --> clock[Clock]
+    writer --> events[EventAppender]
+    writer --> db[mind redb]
+    reader[SemaReader] --> db
+    views[view actors] --> reader
+```
+
+The durable store is one workspace-local `mind.redb` owned by
+`persona-mind`. The storage mechanism is `sema`; Persona-specific storage
+helpers may come through `persona-sema`, but no other component writes
+`mind.redb` directly. Other components talk to mind through
+`signal-persona-mind`.
+
+Recommended tables:
+
+| Table | Purpose |
+|---|---|
+| `claims` | Active role claims and reasons. |
+| `handoffs` | Pending/completed handoff records. |
+| `activities` | Store-stamped role activity. |
+| `items` | Work/memory/decision/question records. |
+| `notes` | Notes attached to items. |
+| `edges` | Dependencies and references. |
+| `aliases` | Imported or external identifiers, including BEADS IDs. |
+| `events` | Append-only state mutation history. |
+| `meta` | schema version and store identity. |
+
+The event log is the audit trail. Current-state tables and views are derived
+state optimized for queries.
+
+## 5 · Role Coordination
+
+The first `mind` replacement for `tools/orchestrate` must implement:
+
+| Operation | Required behavior |
+|---|---|
+| `RoleClaim` | normalize scopes, detect conflicts, commit accepted claims, append activity. |
+| `RoleRelease` | release all scopes for the role, append activity. |
+| `RoleHandoff` | verify source ownership, verify target compatibility, move ownership atomically. |
+| `RoleObservation` | return typed role snapshot plus recent activity. |
+| `ActivitySubmission` | append store-stamped activity; caller does not supply time. |
+| `ActivityQuery` | read recent activity with typed filters. |
+
+```mermaid
+flowchart TB
+    claim[RoleClaim] --> normalize[ScopeNormalizer]
+    normalize --> conflict[ClaimConflictDetector]
+    conflict --> writer[SemaWriter]
+    writer --> activity[ActivityAppender]
+    activity --> accepted[ClaimAcceptance]
+    conflict --> rejected[ClaimRejection]
+```
+
+This replaces lock-file ownership. Transitional projections may exist only as
+disposable compatibility outputs. They must not become a second source of
+truth.
+
+## 6 · Work and Memory Graph
+
+The work graph is the typed replacement for BEADS as an active project memory
+substrate. BEADS entries may be imported once as aliases or external
+references; Persona should not grow a long-term BEADS bridge.
+
+Implemented reducer requests:
+
+- `Open`
+- `AddNote`
+- `Link`
+- `ChangeStatus`
+- `AddAlias`
+- `Query`
+
+Required graph invariants:
+
+- Items have stable internal IDs and short display IDs.
+- Dependencies are typed edges, not string fields.
+- Notes are append-only records attached through events.
+- Imported IDs become aliases or external references.
+- Ready/blocked views derive from item status and dependency edges.
+- Queries do not mutate state.
+
+```mermaid
+flowchart LR
+    item[Item] --> edge[Edge]
+    edge --> blocker[Blocking item]
+    note[Note] --> item
+    alias[ExternalAlias] --> item
+    event[Event] --> item
+    event --> edge
+    event --> note
+```
+
+## 7 · Boundaries
 
 This repo owns:
 
-- role claim and claim-overlap state;
-- handoff and activity semantics as they land;
-- work/memory graph reducers;
-- actor topology, manifest, and traces for mind operations;
-- the future `mind` CLI surface.
+- the `mind` CLI binary and process-boundary logic;
+- Kameo runtime topology for the central mind;
+- role claim/release/handoff/activity behavior;
+- work/memory graph behavior;
+- durable `mind.redb` ownership;
+- mind-specific architectural-truth tests.
 
 This repo does not own:
 
 - `signal-persona-mind` contract records;
-- `persona-router` delivery;
-- `persona-harness` lifecycle;
-- terminal or WezTerm state;
-- `persona-sema` or `sema` internals;
+- router delivery or harness messaging;
+- terminal or WezTerm transport;
+- OS/window-manager observation;
+- `sema` kernel internals;
+- a shared database for other components;
 - BEADS as a live backend.
 
-## 6 · Invariants
+## 8 · Invariants
 
-- Every public operation enters as one `MindEnvelope`.
-- Mind-supplied identity, sequence, time, and operation context are
-  infrastructure concerns; request payloads carry content, not authority.
-- The root actor is the only bare Kameo spawn site; children are supervised
-  from `MindRoot`.
-- No shared `Arc<Mutex<T>>` state exists between actors.
-- Queries must not send write intents.
-- Every memory/work mutation appends a typed event.
-- BEADS is transitional import/history only, never an exclusive lock model.
-- Lock files are not durable truth for this crate.
-- Production code uses direct `kameo`; no second actor abstraction is a
-  dependency or prerequisite.
+- Every public state operation enters as one `MindEnvelope`.
+- The command-line surface accepts one NOTA request record and prints one NOTA
+  reply record.
+- `MindRequest` and `MindReply` come from `signal-persona-mind`; the CLI does
+  not define a parallel command vocabulary.
+- Actor identity, time, event sequence, operation IDs, and display IDs are
+  minted by infrastructure/store actors, not by request payloads.
+- The root actor is the only bare Kameo spawn site.
+- State-bearing phases are actors or reducers owned by actors; no shared
+  `Arc<Mutex<T>>` crosses actor boundaries.
+- Queries never send write intents.
+- Writes append typed events.
+- Durable truth lives in `mind.redb`; lock files and BEADS are transitional.
+
+## 9 · Architectural-truth Tests
+
+The next implementation wave should add tests named for architectural
+constraints:
+
+| Test | Proves |
+|---|---|
+| `mind_cli_accepts_one_nota_record_and_prints_one_nota_reply` | command surface shape. |
+| `mind_cli_uses_signal_persona_mind_types` | no duplicate CLI request enum. |
+| `role_claim_reaches_claim_flow` | claim requests are not routed to unsupported. |
+| `conflicting_claim_returns_typed_rejection` | conflicts are data. |
+| `claim_commit_appends_activity` | activity is automatic. |
+| `query_ready_uses_reader_without_writer` | read path cannot mutate state. |
+| `mind_store_survives_process_restart` | durable `mind.redb` exists. |
+| `lock_files_are_not_source_of_truth` | deleting projections cannot delete state. |
+| `beads_import_creates_alias_only` | no live BEADS bridge. |
 
 ## Code Map
 
@@ -212,7 +326,7 @@ This repo does not own:
 src/lib.rs                 crate surface
 src/error.rs               typed Error enum and actor call errors
 src/envelope.rs            MindEnvelope actor identity wrapper
-src/service.rs             MindRuntime in-process actor facade
+src/service.rs             MindRuntime in-process actor facade and daemon scaffold input
 src/actors/mod.rs          actor module exports
 src/actors/root.rs         MindRoot
 src/actors/ingress.rs      ingress supervisor and envelope preparation trace
@@ -238,10 +352,8 @@ tests/smoke.rs             claim reducer tests
 ## See Also
 
 - `~/primary/reports/operator/101-persona-mind-full-architecture-proposal.md`
-  — full actor-heavy target architecture.
-- `~/primary/reports/operator-assistant/99-kameo-adoption-and-code-quality-audit.md`
-  — Kameo adoption and code-quality audit for Persona migration.
+- `~/primary/reports/operator/105-command-line-mind-architecture-survey.md`
 - `~/primary/reports/designer/100-persona-mind-architecture-proposal.md`
-  — concrete ID, envelope, database-path, and table-key decisions.
-- `../signal-persona-mind/ARCHITECTURE.md` — request/reply contract.
-- `../persona-sema/ARCHITECTURE.md` — typed table layer.
+- `~/primary/reports/designer/106-actor-discipline-status-and-questions.md`
+- `../signal-persona-mind/ARCHITECTURE.md`
+- `../persona-sema/ARCHITECTURE.md`
