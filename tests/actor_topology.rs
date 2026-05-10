@@ -8,8 +8,8 @@ use persona_mind::{
 };
 use signal_persona_mind::{
     ActivityFilter, ActivityQuery, ActivitySubmission, ActorName, ItemKind, ItemPriority,
-    MindReply, MindRequest, Opening, Query, QueryKind, QueryLimit, RoleClaim, RoleName,
-    RoleObservation, RoleRelease, ScopeReason, ScopeReference, TextBody, Title, WirePath,
+    MindReply, MindRequest, Opening, Query, QueryKind, QueryLimit, RoleClaim, RoleHandoff,
+    RoleName, RoleObservation, RoleRelease, ScopeReason, ScopeReference, TextBody, Title, WirePath,
 };
 
 struct ActorFixture {
@@ -331,6 +331,94 @@ async fn role_release_removes_claims_from_observation() {
 }
 
 #[tokio::test]
+async fn role_handoff_moves_claim_between_roles() {
+    let fixture = ActorFixture::new().await;
+    let claim = ClaimFixture::operator();
+    let scope = claim.path("/git/github.com/LiGoldragon/persona-mind");
+    let _accepted = fixture
+        .submit(claim.claim("/git/github.com/LiGoldragon/persona-mind"))
+        .await;
+
+    let response = fixture
+        .submit(MindRequest::RoleHandoff(RoleHandoff {
+            from: RoleName::Operator,
+            to: RoleName::Designer,
+            scopes: vec![scope.clone()],
+            reason: ScopeReason::from_text("handoff to designer").expect("reason"),
+        }))
+        .await;
+
+    let MindReply::HandoffAcceptance(acceptance) = response.reply().expect("reply exists") else {
+        panic!("expected handoff acceptance");
+    };
+
+    assert_eq!(acceptance.from, RoleName::Operator);
+    assert_eq!(acceptance.to, RoleName::Designer);
+    assert_eq!(acceptance.scopes, vec![scope.clone()]);
+    assert!(response.trace().contains_ordered(&[
+        ActorKind::MindRoot,
+        ActorKind::IngressPhase,
+        ActorKind::DispatchPhase,
+        ActorKind::HandoffFlow,
+        ActorKind::DomainPhase,
+        ActorKind::ClaimSupervisor,
+        ActorKind::StoreSupervisor,
+        ActorKind::SemaWriter,
+        ActorKind::Commit,
+        ActorKind::ReplySupervisor,
+    ]));
+
+    let observed = fixture
+        .submit(MindRequest::RoleObservation(RoleObservation))
+        .await;
+    let MindReply::RoleSnapshot(snapshot) = observed.reply().expect("reply exists") else {
+        panic!("expected role snapshot");
+    };
+    let operator = snapshot
+        .roles
+        .iter()
+        .find(|status| status.role == RoleName::Operator)
+        .expect("operator status exists");
+    let designer = snapshot
+        .roles
+        .iter()
+        .find(|status| status.role == RoleName::Designer)
+        .expect("designer status exists");
+
+    assert!(operator.claims.is_empty());
+    assert_eq!(designer.claims.len(), 1);
+    assert_eq!(designer.claims[0].scope, scope);
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn handoff_without_source_claim_returns_typed_rejection() {
+    let fixture = ActorFixture::new().await;
+    let claim = ClaimFixture::operator();
+    let scope = claim.path("/git/github.com/LiGoldragon/persona-mind");
+    let response = fixture
+        .submit(MindRequest::RoleHandoff(RoleHandoff {
+            from: RoleName::Operator,
+            to: RoleName::Designer,
+            scopes: vec![scope],
+            reason: ScopeReason::from_text("missing source probe").expect("reason"),
+        }))
+        .await;
+
+    let MindReply::HandoffRejection(rejection) = response.reply().expect("reply exists") else {
+        panic!("expected handoff rejection");
+    };
+
+    assert_eq!(rejection.from, RoleName::Operator);
+    assert_eq!(rejection.to, RoleName::Designer);
+    assert!(response.trace().contains(ActorKind::HandoffFlow));
+    assert!(response.trace().contains(ActorKind::Commit));
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
 async fn activity_submission_reaches_activity_flow_and_store_mints_time() {
     let fixture = ActorFixture::new().await;
     let response = fixture
@@ -362,6 +450,41 @@ async fn activity_submission_reaches_activity_flow_and_store_mints_time() {
         ActorKind::Commit,
         ActorKind::ReplySupervisor,
     ]));
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn role_observation_includes_recent_activity() {
+    let fixture = ActorFixture::new().await;
+    let scope = ScopeReference::Path(
+        WirePath::from_absolute_path("/git/github.com/LiGoldragon/persona-mind")
+            .expect("absolute path"),
+    );
+    let _activity = fixture
+        .submit(MindRequest::ActivitySubmission(ActivitySubmission {
+            role: RoleName::Operator,
+            scope: scope.clone(),
+            reason: ScopeReason::from_text("activity before observe").expect("reason"),
+        }))
+        .await;
+
+    let response = fixture
+        .submit(MindRequest::RoleObservation(RoleObservation))
+        .await;
+
+    let MindReply::RoleSnapshot(snapshot) = response.reply().expect("reply exists") else {
+        panic!("expected role snapshot");
+    };
+
+    assert_eq!(snapshot.recent_activity.len(), 1);
+    assert_eq!(snapshot.recent_activity[0].role, RoleName::Operator);
+    assert_eq!(snapshot.recent_activity[0].scope, scope);
+    assert_eq!(
+        snapshot.recent_activity[0].reason,
+        ScopeReason::from_text("activity before observe").expect("reason")
+    );
+    assert!(snapshot.recent_activity[0].stamped_at.value() > 0);
 
     fixture.stop().await;
 }

@@ -80,7 +80,8 @@ impl DispatchPhase {
                 self.read_activity(envelope, trace).await?
             }
             MindRequest::RoleHandoff(_) => {
-                self.unsupported(envelope, trace, ActorKind::HandoffFlow)
+                trace.record(ActorKind::HandoffFlow, TraceAction::MessageReceived);
+                self.apply_handoff(envelope, trace).await?
             }
         };
 
@@ -120,6 +121,17 @@ impl DispatchPhase {
             .map_err(|error| crate::Error::ActorCall(error.to_string()))
     }
 
+    async fn apply_handoff(
+        &self,
+        envelope: MindEnvelope,
+        trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        self.domain
+            .ask(domain::ApplyHandoff { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
     async fn read_claims(
         &self,
         envelope: MindEnvelope,
@@ -151,17 +163,6 @@ impl DispatchPhase {
             .ask(view::ReadActivity { envelope, trace })
             .await
             .map_err(|error| crate::Error::ActorCall(error.to_string()))
-    }
-
-    fn unsupported(
-        &self,
-        _envelope: MindEnvelope,
-        mut trace: ActorTrace,
-        actor: ActorKind,
-    ) -> PipelineReply {
-        trace.record(actor, TraceAction::MessageReceived);
-        trace.record(ActorKind::ErrorShaper, TraceAction::MessageReplied);
-        PipelineReply::new(None, trace)
     }
 
     async fn shape_reply(&self, pipeline: PipelineReply) -> CrateResult<PipelineReply> {

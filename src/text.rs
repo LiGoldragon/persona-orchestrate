@@ -140,6 +140,30 @@ impl RoleRelease {
     }
 }
 
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct RoleHandoff {
+    pub from: RoleNameText,
+    pub to: RoleNameText,
+    pub scopes: Vec<ScopeReferenceText>,
+    pub reason: String,
+}
+
+impl RoleHandoff {
+    fn into_contract(self) -> Result<contract::MindRequest> {
+        let scopes = self
+            .scopes
+            .into_iter()
+            .map(ScopeReferenceText::into_contract)
+            .collect::<Result<Vec<_>>>()?;
+        Ok(contract::MindRequest::RoleHandoff(contract::RoleHandoff {
+            from: self.from.into_contract(),
+            to: self.to.into_contract(),
+            scopes,
+            reason: contract::ScopeReason::from_text(self.reason)?,
+        }))
+    }
+}
+
 #[derive(NotaRecord, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RoleObservation {}
 
@@ -256,6 +280,7 @@ impl ActivityQuery {
 pub enum MindTextRequest {
     RoleClaim(RoleClaim),
     RoleRelease(RoleRelease),
+    RoleHandoff(RoleHandoff),
     RoleObservation(RoleObservation),
     ActivitySubmission(ActivitySubmission),
     ActivityQuery(ActivityQuery),
@@ -273,6 +298,7 @@ impl MindTextRequest {
         match self {
             Self::RoleClaim(claim) => claim.into_contract(),
             Self::RoleRelease(release) => Ok(release.into_contract()),
+            Self::RoleHandoff(handoff) => handoff.into_contract(),
             Self::RoleObservation(observation) => Ok(observation.into_contract()),
             Self::ActivitySubmission(submission) => submission.into_contract(),
             Self::ActivityQuery(query) => query.into_contract(),
@@ -285,6 +311,7 @@ impl NotaEncode for MindTextRequest {
         match self {
             Self::RoleClaim(claim) => claim.encode(encoder),
             Self::RoleRelease(release) => release.encode(encoder),
+            Self::RoleHandoff(handoff) => handoff.encode(encoder),
             Self::RoleObservation(observation) => observation.encode(encoder),
             Self::ActivitySubmission(submission) => submission.encode(encoder),
             Self::ActivityQuery(query) => query.encode(encoder),
@@ -297,6 +324,7 @@ impl NotaDecode for MindTextRequest {
         match decoder.peek_record_head()?.as_str() {
             "RoleClaim" => Ok(Self::RoleClaim(RoleClaim::decode(decoder)?)),
             "RoleRelease" => Ok(Self::RoleRelease(RoleRelease::decode(decoder)?)),
+            "RoleHandoff" => Ok(Self::RoleHandoff(RoleHandoff::decode(decoder)?)),
             "RoleObservation" => Ok(Self::RoleObservation(RoleObservation::decode(decoder)?)),
             "ActivitySubmission" => Ok(Self::ActivitySubmission(ActivitySubmission::decode(
                 decoder,
@@ -380,6 +408,102 @@ impl ReleaseAcknowledgment {
                 .into_iter()
                 .map(ScopeReferenceText::from_contract)
                 .collect(),
+        }
+    }
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct HandoffAcceptance {
+    pub from: RoleNameText,
+    pub to: RoleNameText,
+    pub scopes: Vec<ScopeReferenceText>,
+}
+
+impl HandoffAcceptance {
+    fn from_contract(acceptance: contract::HandoffAcceptance) -> Self {
+        Self {
+            from: RoleNameText::from_contract(acceptance.from),
+            to: RoleNameText::from_contract(acceptance.to),
+            scopes: acceptance
+                .scopes
+                .into_iter()
+                .map(ScopeReferenceText::from_contract)
+                .collect(),
+        }
+    }
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct SourceRoleDoesNotHold {}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct TargetRoleConflict {
+    pub conflicts: Vec<ScopeConflict>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HandoffRejectionReason {
+    SourceRoleDoesNotHold(SourceRoleDoesNotHold),
+    TargetRoleConflict(TargetRoleConflict),
+}
+
+impl HandoffRejectionReason {
+    fn from_contract(reason: contract::HandoffRejectionReason) -> Self {
+        match reason {
+            contract::HandoffRejectionReason::SourceRoleDoesNotHold => {
+                Self::SourceRoleDoesNotHold(SourceRoleDoesNotHold {})
+            }
+            contract::HandoffRejectionReason::TargetRoleConflict(conflicts) => {
+                Self::TargetRoleConflict(TargetRoleConflict {
+                    conflicts: conflicts
+                        .into_iter()
+                        .map(ScopeConflict::from_contract)
+                        .collect(),
+                })
+            }
+        }
+    }
+}
+
+impl NotaEncode for HandoffRejectionReason {
+    fn encode(&self, encoder: &mut Encoder) -> nota_codec::Result<()> {
+        match self {
+            Self::SourceRoleDoesNotHold(reason) => reason.encode(encoder),
+            Self::TargetRoleConflict(reason) => reason.encode(encoder),
+        }
+    }
+}
+
+impl NotaDecode for HandoffRejectionReason {
+    fn decode(decoder: &mut Decoder<'_>) -> nota_codec::Result<Self> {
+        match decoder.peek_record_head()?.as_str() {
+            "SourceRoleDoesNotHold" => Ok(Self::SourceRoleDoesNotHold(
+                SourceRoleDoesNotHold::decode(decoder)?,
+            )),
+            "TargetRoleConflict" => Ok(Self::TargetRoleConflict(TargetRoleConflict::decode(
+                decoder,
+            )?)),
+            other => Err(nota_codec::Error::UnknownKindForVerb {
+                verb: "HandoffRejectionReason",
+                got: other.to_string(),
+            }),
+        }
+    }
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct HandoffRejection {
+    pub from: RoleNameText,
+    pub to: RoleNameText,
+    pub reason: HandoffRejectionReason,
+}
+
+impl HandoffRejection {
+    fn from_contract(rejection: contract::HandoffRejection) -> Self {
+        Self {
+            from: RoleNameText::from_contract(rejection.from),
+            to: RoleNameText::from_contract(rejection.to),
+            reason: HandoffRejectionReason::from_contract(rejection.reason),
         }
     }
 }
@@ -495,6 +619,8 @@ pub enum MindTextReply {
     ClaimAcceptance(ClaimAcceptance),
     ClaimRejection(ClaimRejection),
     ReleaseAcknowledgment(ReleaseAcknowledgment),
+    HandoffAcceptance(HandoffAcceptance),
+    HandoffRejection(HandoffRejection),
     RoleSnapshot(RoleSnapshot),
     ActivityAcknowledgment(ActivityAcknowledgment),
     ActivityList(ActivityList),
@@ -512,6 +638,12 @@ impl MindTextReply {
             contract::MindReply::ReleaseAcknowledgment(acknowledgment) => Ok(
                 Self::ReleaseAcknowledgment(ReleaseAcknowledgment::from_contract(acknowledgment)),
             ),
+            contract::MindReply::HandoffAcceptance(acceptance) => Ok(Self::HandoffAcceptance(
+                HandoffAcceptance::from_contract(acceptance),
+            )),
+            contract::MindReply::HandoffRejection(rejection) => Ok(Self::HandoffRejection(
+                HandoffRejection::from_contract(rejection),
+            )),
             contract::MindReply::RoleSnapshot(snapshot) => {
                 Ok(Self::RoleSnapshot(RoleSnapshot::from_contract(snapshot)))
             }
@@ -521,12 +653,6 @@ impl MindTextReply {
             contract::MindReply::ActivityList(list) => {
                 Ok(Self::ActivityList(ActivityList::from_contract(list)))
             }
-            contract::MindReply::HandoffAcceptance(_) => Err(Error::UnsupportedTextReply {
-                reply: "HandoffAcceptance",
-            }),
-            contract::MindReply::HandoffRejection(_) => Err(Error::UnsupportedTextReply {
-                reply: "HandoffRejection",
-            }),
             contract::MindReply::OpeningReceipt(_) => Err(Error::UnsupportedTextReply {
                 reply: "OpeningReceipt",
             }),
@@ -562,6 +688,8 @@ impl NotaEncode for MindTextReply {
             Self::ClaimAcceptance(acceptance) => acceptance.encode(encoder),
             Self::ClaimRejection(rejection) => rejection.encode(encoder),
             Self::ReleaseAcknowledgment(acknowledgment) => acknowledgment.encode(encoder),
+            Self::HandoffAcceptance(acceptance) => acceptance.encode(encoder),
+            Self::HandoffRejection(rejection) => rejection.encode(encoder),
             Self::RoleSnapshot(snapshot) => snapshot.encode(encoder),
             Self::ActivityAcknowledgment(acknowledgment) => acknowledgment.encode(encoder),
             Self::ActivityList(list) => list.encode(encoder),

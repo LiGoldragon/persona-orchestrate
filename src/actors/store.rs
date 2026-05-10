@@ -32,6 +32,11 @@ pub struct ApplyClaim {
     pub trace: ActorTrace,
 }
 
+pub struct ApplyHandoff {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
 pub struct ReadClaims {
     pub envelope: MindEnvelope,
     pub trace: ActorTrace,
@@ -89,6 +94,25 @@ impl StoreSupervisor {
             MindRequest::RoleRelease(release) => Some(
                 ClaimLedger::new(&self.tables)
                     .apply_release(release)
+                    .unwrap_or_else(Self::persistence_rejection),
+            ),
+            _ => None,
+        };
+
+        trace.record(ActorKind::EventAppender, TraceAction::MessageReceived);
+        trace.record(ActorKind::Commit, TraceAction::CommitCompleted);
+        PipelineReply::new(reply, trace)
+    }
+
+    fn apply_handoff(&mut self, envelope: MindEnvelope, mut trace: ActorTrace) -> PipelineReply {
+        trace.record(ActorKind::StoreSupervisor, TraceAction::MessageReceived);
+        trace.record(ActorKind::SemaReader, TraceAction::MessageReceived);
+        trace.record(ActorKind::SemaWriter, TraceAction::WriteIntentSent);
+
+        let reply = match envelope.request().clone() {
+            MindRequest::RoleHandoff(handoff) => Some(
+                ClaimLedger::new(&self.tables)
+                    .apply_handoff(handoff)
                     .unwrap_or_else(Self::persistence_rejection),
             ),
             _ => None,
@@ -203,6 +227,18 @@ impl Message<ApplyClaim> for StoreSupervisor {
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         self.apply_claim(message.envelope, message.trace)
+    }
+}
+
+impl Message<ApplyHandoff> for StoreSupervisor {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: ApplyHandoff,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.apply_handoff(message.envelope, message.trace)
     }
 }
 

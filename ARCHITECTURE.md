@@ -6,10 +6,10 @@ command-line mind.*
 > Status: the crate has a real Kameo runtime, mind-local Sema tables for
 > durable role claims and activity records, an in-memory work graph reducer,
 > and a Unix-socket Signal-frame daemon/client transport around `MindRoot`. The
-> `mind` binary can run a daemon and submit NOTA role claim/release/observation
-> and activity submission/query requests through that daemon. Full work-graph
-> persistence, full NOTA coverage, and handoff flow are the next foundational
-> implementation wave.
+> `mind` binary can run a daemon and submit NOTA role
+> claim/release/handoff/observation and activity submission/query requests
+> through that daemon. Full work-graph persistence and full NOTA coverage are
+> the next foundational implementation wave.
 
 ---
 
@@ -181,10 +181,8 @@ Current implementation:
 - `MemoryState` owns a private in-memory graph.
 - Work/memory mutations append typed `Event` values.
 - Queries read the in-memory graph and produce typed `View` replies.
-- Role claim, release, observation, activity submission, and activity query are
-  routed through the actor path.
-- Role handoff requests are present in the contract but not fully routed through
-  the runtime yet.
+- Role claim, release, handoff, observation, activity submission, and activity
+  query are routed through the actor path.
 
 Destination:
 
@@ -231,7 +229,7 @@ The first `mind` replacement for `tools/orchestrate` must implement:
 |---|---|
 | `RoleClaim` | normalize scopes, detect conflicts, commit accepted claims. |
 | `RoleRelease` | release all scopes for the role. |
-| `RoleHandoff` | verify source ownership, verify target compatibility, move ownership atomically. |
+| `RoleHandoff` | verify exact source ownership, verify target compatibility, move ownership atomically. |
 | `RoleObservation` | return typed role snapshot plus recent activity. |
 | `ActivitySubmission` | append store-stamped activity; caller does not supply time. |
 | `ActivityQuery` | read recent activity with typed filters. |
@@ -312,9 +310,10 @@ This repo does not own:
   NOTA reply record.
 - The `mind` CLI sends Signal frames to the long-lived `persona-mind` daemon;
   it does not own `MindRoot`.
-- The `mind` CLI currently supports role claim, release, observation, activity
-  submission, and activity query text records; unsupported text records fail at
-  the text boundary instead of inventing a second command language.
+- The `mind` CLI currently supports role claim, release, handoff, observation,
+  activity submission, and activity query text records; unsupported text
+  records fail at the text boundary instead of inventing a second command
+  language.
 - `MindClient` sends one length-prefixed Signal request frame to the daemon and
   expects one length-prefixed Signal reply frame back.
 - `MindClient` supplies caller identity through Signal auth, not through the
@@ -326,8 +325,8 @@ This repo does not own:
 - A missing daemon cannot produce a client reply.
 - The daemon owns `MindRoot` for its process lifetime.
 - The daemon owns `mind.redb`; the CLI never opens the database.
-- Role claims, releases, and observations read/write the mind-local Sema claims
-  table in `mind.redb`.
+- Role claims, releases, handoffs, and observations read/write the mind-local
+  Sema claims table in `mind.redb`.
 - Activity submissions and queries read/write the mind-local Sema activities
   table in `mind.redb`.
 - `MindRequest` and `MindReply` come from `signal-persona-mind`; the CLI does
@@ -340,9 +339,8 @@ This repo does not own:
   shared locks between actors.
 - Queries never send write intents.
 - Writes append typed events before producing success replies.
-- Role claim, release, and observation are successful runtime paths, not
-  unsupported placeholders.
-- Role handoff is still unsupported until its actors and store semantics land.
+- Role claim, release, handoff, and observation are successful runtime paths,
+  not unsupported placeholders.
 - BEADS import creates aliases or external references only; there is no live
   BEADS bridge.
 - Lock files are outside the implementation; `persona-mind` replaces them
@@ -380,8 +378,11 @@ constraints:
 | `conflicting_claim_returns_typed_rejection` | conflicts are data. |
 | `role_observation_reads_claims_without_writer` | role observation is a read path. |
 | `role_release_removes_claims_from_observation` | release mutates role state. |
+| `role_handoff_moves_claim_between_roles` | handoff moves exact source claims to the target role. |
+| `handoff_without_source_claim_returns_typed_rejection` | handoff failure is typed, not an unsupported placeholder. |
 | `activity_submission_reaches_activity_flow_and_store_mints_time` | activity append goes through activity flow and store-minted time. |
 | `activity_query_reads_recent_activity_without_writer` | activity query is a read path with filters. |
+| `role_observation_includes_recent_activity` | role observation includes the recent activity projection. |
 | `query_ready_uses_reader_without_writer` | read path cannot mutate state. |
 | `daemon_round_trip_uses_signal_frames_over_socket` | one socket request/reply crosses the Signal-frame transport and reaches `MindRoot`. |
 | `daemon_uses_signal_auth_for_actor_identity` | caller identity is derived from Signal auth before building `MindEnvelope`. |

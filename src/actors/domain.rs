@@ -28,6 +28,11 @@ pub struct ApplyClaim {
     pub trace: ActorTrace,
 }
 
+pub struct ApplyHandoff {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
 pub struct ApplyActivity {
     pub envelope: MindEnvelope,
     pub trace: ActorTrace,
@@ -66,6 +71,21 @@ impl DomainPhase {
 
         self.store
             .ask(store::ApplyClaim { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn apply_handoff(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        trace.record(ActorKind::DomainPhase, TraceAction::MessageReceived);
+        trace.record(ActorKind::HandoffFlow, TraceAction::MessageReceived);
+        trace.record(ActorKind::ClaimSupervisor, TraceAction::MessageReceived);
+
+        self.store
+            .ask(store::ApplyHandoff { envelope, trace })
             .await
             .map_err(|error| crate::Error::ActorCall(error.to_string()))
     }
@@ -122,6 +142,21 @@ impl Message<ApplyClaim> for DomainPhase {
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         match self.apply_claim(message.envelope, message.trace).await {
+            Ok(reply) => reply,
+            Err(_error) => PipelineReply::new(None, ActorTrace::new()),
+        }
+    }
+}
+
+impl Message<ApplyHandoff> for DomainPhase {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: ApplyHandoff,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        match self.apply_handoff(message.envelope, message.trace).await {
             Ok(reply) => reply,
             Err(_error) => PipelineReply::new(None, ActorTrace::new()),
         }

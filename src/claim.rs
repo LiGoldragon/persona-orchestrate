@@ -1,6 +1,7 @@
-use crate::{MindTables, PersonaRole, Result, StoredClaim};
+use crate::{MindTables, PersonaRole, Result, StoredActivity, StoredClaim};
 use signal_persona_mind::{
-    ClaimAcceptance, ClaimEntry, ClaimRejection, MindReply, RoleClaim, RoleName, RoleObservation,
+    Activity, ClaimAcceptance, ClaimEntry, ClaimRejection, HandoffAcceptance, HandoffRejection,
+    HandoffRejectionReason, MindReply, RoleClaim, RoleHandoff, RoleName, RoleObservation,
     RoleRelease, RoleSnapshot, RoleStatus, ScopeConflict, ScopeReference,
 };
 
@@ -73,6 +74,8 @@ pub struct ClaimLedger<'tables> {
 }
 
 impl<'tables> ClaimLedger<'tables> {
+    const ROLE_OBSERVATION_ACTIVITY_LIMIT: usize = 20;
+
     pub fn new(tables: &'tables MindTables) -> Self {
         Self { tables }
     }
@@ -141,8 +144,52 @@ impl<'tables> ClaimLedger<'tables> {
         ))
     }
 
+    pub fn apply_handoff(&self, handoff: RoleHandoff) -> Result<MindReply> {
+        let entries = self.tables.claim_records()?;
+        if !Self::source_holds_all(&entries, &handoff) {
+            return Ok(MindReply::HandoffRejection(HandoffRejection {
+                from: handoff.from,
+                to: handoff.to,
+                reason: HandoffRejectionReason::SourceRoleDoesNotHold,
+            }));
+        }
+
+        let conflicts = Self::target_conflicts_for(&entries, &handoff);
+        if !conflicts.is_empty() {
+            return Ok(MindReply::HandoffRejection(HandoffRejection {
+                from: handoff.from,
+                to: handoff.to,
+                reason: HandoffRejectionReason::TargetRoleConflict(conflicts),
+            }));
+        }
+
+        let remove_keys = entries
+            .iter()
+            .filter(|entry| Self::removed_by_handoff(entry, &handoff))
+            .map(StoredClaim::key)
+            .collect::<Vec<_>>();
+        let insert_claims = handoff
+            .scopes
+            .iter()
+            .filter(|scope| !Self::role_already_owns(&entries, &handoff.to, scope))
+            .map(|scope| StoredClaim::new(handoff.to, scope.clone(), handoff.reason.clone()))
+            .collect::<Vec<_>>();
+
+        self.tables.replace_claims(&remove_keys, &insert_claims)?;
+
+        Ok(MindReply::HandoffAcceptance(HandoffAcceptance {
+            from: handoff.from,
+            to: handoff.to,
+            scopes: handoff.scopes,
+        }))
+    }
+
     pub fn observe(&self, _observation: RoleObservation) -> Result<MindReply> {
         let entries = self.tables.claim_records()?;
+        let recent_activity = Self::recent_activity(
+            self.tables.activity_records()?,
+            Self::ROLE_OBSERVATION_ACTIVITY_LIMIT,
+        );
         let roles = RoleName::ALL
             .into_iter()
             .map(|role| RoleStatus {
@@ -153,7 +200,7 @@ impl<'tables> ClaimLedger<'tables> {
 
         Ok(MindReply::RoleSnapshot(RoleSnapshot {
             roles,
-            recent_activity: Vec::new(),
+            recent_activity,
         }))
     }
 
@@ -182,6 +229,47 @@ impl<'tables> ClaimLedger<'tables> {
             .any(|entry| entry.role == *role && scope_contains(&entry.scope, scope))
     }
 
+    fn source_holds_all(entries: &[StoredClaim], handoff: &RoleHandoff) -> bool {
+        handoff
+            .scopes
+            .iter()
+            .all(|scope| Self::role_holds_exact(entries, handoff.from, scope))
+    }
+
+    fn role_holds_exact(entries: &[StoredClaim], role: RoleName, scope: &ScopeReference) -> bool {
+        entries
+            .iter()
+            .any(|entry| entry.role == role && entry.scope == *scope)
+    }
+
+    fn target_conflicts_for(entries: &[StoredClaim], handoff: &RoleHandoff) -> Vec<ScopeConflict> {
+        handoff
+            .scopes
+            .iter()
+            .flat_map(|scope| {
+                entries
+                    .iter()
+                    .filter(move |entry| {
+                        entry.role != handoff.from
+                            && entry.role != handoff.to
+                            && scopes_overlap(scope, &entry.scope)
+                    })
+                    .map(move |entry| ScopeConflict {
+                        scope: scope.clone(),
+                        held_by: entry.role,
+                        held_reason: entry.reason.clone(),
+                    })
+            })
+            .collect()
+    }
+
+    fn removed_by_handoff(entry: &StoredClaim, handoff: &RoleHandoff) -> bool {
+        handoff.scopes.iter().any(|scope| {
+            (entry.role == handoff.from && entry.scope == *scope)
+                || (entry.role == handoff.to && scope_contains(scope, &entry.scope))
+        })
+    }
+
     fn claims_for(entries: &[StoredClaim], role: RoleName) -> Vec<ClaimEntry> {
         entries
             .iter()
@@ -190,6 +278,16 @@ impl<'tables> ClaimLedger<'tables> {
                 scope: entry.scope.clone(),
                 reason: entry.reason.clone(),
             })
+            .collect()
+    }
+
+    fn recent_activity(mut records: Vec<StoredActivity>, limit: usize) -> Vec<Activity> {
+        records.sort_by_key(|activity| activity.slot);
+        records.reverse();
+        records
+            .into_iter()
+            .take(limit)
+            .map(StoredActivity::into_activity)
             .collect()
     }
 }
