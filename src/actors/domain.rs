@@ -9,7 +9,7 @@ use super::pipeline::PipelineReply;
 use super::store;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub(super) struct DomainSupervisor {
+pub(super) struct DomainPhase {
     store: ActorRef<store::StoreSupervisor>,
 }
 
@@ -23,7 +23,7 @@ pub struct ApplyMemory {
     pub trace: ActorTrace,
 }
 
-impl DomainSupervisor {
+impl DomainPhase {
     fn new(store: ActorRef<store::StoreSupervisor>) -> Self {
         Self { store }
     }
@@ -33,7 +33,7 @@ impl DomainSupervisor {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
-        trace.record(ActorKind::DomainSupervisor, TraceAction::MessageReceived);
+        trace.record(ActorKind::DomainPhase, TraceAction::MessageReceived);
         trace.record(
             ActorKind::MemoryGraphSupervisor,
             TraceAction::MessageReceived,
@@ -47,7 +47,7 @@ impl DomainSupervisor {
     }
 }
 
-impl Actor for DomainSupervisor {
+impl Actor for DomainPhase {
     type Args = Arguments;
     type Error = Infallible;
 
@@ -59,7 +59,7 @@ impl Actor for DomainSupervisor {
     }
 }
 
-impl Message<ApplyMemory> for DomainSupervisor {
+impl Message<ApplyMemory> for DomainPhase {
     type Reply = PipelineReply;
 
     async fn handle(

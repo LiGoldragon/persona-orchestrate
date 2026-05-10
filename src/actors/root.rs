@@ -10,7 +10,7 @@ use super::trace::{ActorKind, ActorTrace, TraceAction};
 use super::{config, dispatch, domain, ingress, reply, store, subscription, view};
 
 pub(crate) struct MindRoot {
-    ingress: ActorRef<ingress::IngressSupervisor>,
+    ingress: ActorRef<ingress::IngressPhase>,
     manifest: ActorManifest,
 }
 
@@ -66,7 +66,7 @@ impl RootReply {
 }
 
 impl MindRoot {
-    fn new(ingress: ActorRef<ingress::IngressSupervisor>, manifest: ActorManifest) -> Self {
+    fn new(ingress: ActorRef<ingress::IngressPhase>, manifest: ActorManifest) -> Self {
         Self { ingress, manifest }
     }
 
@@ -142,7 +142,7 @@ impl Actor for MindRoot {
                 .spawn()
                 .await;
 
-        let view = view::ViewSupervisor::supervise(
+        let view = view::ViewPhase::supervise(
             &actor_reference,
             view::Arguments {
                 store: store.clone(),
@@ -151,7 +151,7 @@ impl Actor for MindRoot {
         .spawn()
         .await;
 
-        let domain = domain::DomainSupervisor::supervise(
+        let domain = domain::DomainPhase::supervise(
             &actor_reference,
             domain::Arguments {
                 store: store.clone(),
@@ -160,7 +160,7 @@ impl Actor for MindRoot {
         .spawn()
         .await;
 
-        let dispatch = dispatch::DispatchSupervisor::supervise(
+        let dispatch = dispatch::DispatchPhase::supervise(
             &actor_reference,
             dispatch::Arguments {
                 domain,
@@ -171,12 +171,10 @@ impl Actor for MindRoot {
         .spawn()
         .await;
 
-        let ingress = ingress::IngressSupervisor::supervise(
-            &actor_reference,
-            ingress::Arguments { dispatch },
-        )
-        .spawn()
-        .await;
+        let ingress =
+            ingress::IngressPhase::supervise(&actor_reference, ingress::Arguments { dispatch })
+                .spawn()
+                .await;
 
         Ok(Self::new(ingress, manifest))
     }

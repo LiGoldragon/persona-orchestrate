@@ -11,16 +11,16 @@ use super::reply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 use super::view;
 
-pub(super) struct DispatchSupervisor {
-    domain: ActorRef<domain::DomainSupervisor>,
-    view: ActorRef<view::ViewSupervisor>,
+pub(super) struct DispatchPhase {
+    domain: ActorRef<domain::DomainPhase>,
+    view: ActorRef<view::ViewPhase>,
     reply: ActorRef<reply::ReplySupervisor>,
 }
 
 #[derive(Clone)]
 pub(super) struct Arguments {
-    pub(super) domain: ActorRef<domain::DomainSupervisor>,
-    pub(super) view: ActorRef<view::ViewSupervisor>,
+    pub(super) domain: ActorRef<domain::DomainPhase>,
+    pub(super) view: ActorRef<view::ViewPhase>,
     pub(super) reply: ActorRef<reply::ReplySupervisor>,
 }
 
@@ -29,10 +29,10 @@ pub struct RouteEnvelope {
     pub trace: ActorTrace,
 }
 
-impl DispatchSupervisor {
+impl DispatchPhase {
     fn new(
-        domain: ActorRef<domain::DomainSupervisor>,
-        view: ActorRef<view::ViewSupervisor>,
+        domain: ActorRef<domain::DomainPhase>,
+        view: ActorRef<view::ViewPhase>,
         reply: ActorRef<reply::ReplySupervisor>,
     ) -> Self {
         Self {
@@ -47,7 +47,7 @@ impl DispatchSupervisor {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
-        trace.record(ActorKind::DispatchSupervisor, TraceAction::MessageReceived);
+        trace.record(ActorKind::DispatchPhase, TraceAction::MessageReceived);
         trace.record(ActorKind::RequestDispatcher, TraceAction::MessageReceived);
 
         let pipeline = match envelope.request() {
@@ -122,7 +122,7 @@ impl DispatchSupervisor {
     }
 }
 
-impl Actor for DispatchSupervisor {
+impl Actor for DispatchPhase {
     type Args = Arguments;
     type Error = Infallible;
 
@@ -134,7 +134,7 @@ impl Actor for DispatchSupervisor {
     }
 }
 
-impl Message<RouteEnvelope> for DispatchSupervisor {
+impl Message<RouteEnvelope> for DispatchPhase {
     type Reply = PipelineReply;
 
     async fn handle(

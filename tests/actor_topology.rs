@@ -43,11 +43,11 @@ fn topology_manifest_names_required_actor_planes() {
     for actor in [
         ActorKind::MindRoot,
         ActorKind::Config,
-        ActorKind::IngressSupervisor,
-        ActorKind::DispatchSupervisor,
-        ActorKind::DomainSupervisor,
+        ActorKind::IngressPhase,
+        ActorKind::DispatchPhase,
+        ActorKind::DomainPhase,
         ActorKind::StoreSupervisor,
-        ActorKind::ViewSupervisor,
+        ActorKind::ViewPhase,
         ActorKind::SubscriptionSupervisor,
         ActorKind::ReplySupervisor,
         ActorKind::SemaWriter,
@@ -87,10 +87,10 @@ async fn open_item_runs_through_kameo_write_path() {
     );
     assert!(response.trace().contains_ordered(&[
         ActorKind::MindRoot,
-        ActorKind::IngressSupervisor,
-        ActorKind::DispatchSupervisor,
+        ActorKind::IngressPhase,
+        ActorKind::DispatchPhase,
         ActorKind::MemoryFlow,
-        ActorKind::DomainSupervisor,
+        ActorKind::DomainPhase,
         ActorKind::ItemOpen,
         ActorKind::StoreSupervisor,
         ActorKind::SemaWriter,
@@ -138,10 +138,10 @@ async fn query_path_uses_read_actor_without_writer() {
     assert_eq!(view.items.len(), 1);
     assert!(response.trace().contains_ordered(&[
         ActorKind::MindRoot,
-        ActorKind::IngressSupervisor,
-        ActorKind::DispatchSupervisor,
+        ActorKind::IngressPhase,
+        ActorKind::DispatchPhase,
         ActorKind::QueryFlow,
-        ActorKind::ViewSupervisor,
+        ActorKind::ViewPhase,
         ActorKind::ReadyWorkView,
         ActorKind::StoreSupervisor,
         ActorKind::SemaReader,

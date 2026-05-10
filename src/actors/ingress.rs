@@ -8,13 +8,13 @@ use super::dispatch;
 use super::pipeline::PipelineReply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub(super) struct IngressSupervisor {
-    dispatch: ActorRef<dispatch::DispatchSupervisor>,
+pub(super) struct IngressPhase {
+    dispatch: ActorRef<dispatch::DispatchPhase>,
 }
 
 #[derive(Clone)]
 pub(super) struct Arguments {
-    pub(super) dispatch: ActorRef<dispatch::DispatchSupervisor>,
+    pub(super) dispatch: ActorRef<dispatch::DispatchPhase>,
 }
 
 pub struct AcceptEnvelope {
@@ -22,8 +22,8 @@ pub struct AcceptEnvelope {
     pub trace: ActorTrace,
 }
 
-impl IngressSupervisor {
-    fn new(dispatch: ActorRef<dispatch::DispatchSupervisor>) -> Self {
+impl IngressPhase {
+    fn new(dispatch: ActorRef<dispatch::DispatchPhase>) -> Self {
         Self { dispatch }
     }
 
@@ -32,7 +32,7 @@ impl IngressSupervisor {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
-        trace.record(ActorKind::IngressSupervisor, TraceAction::MessageReceived);
+        trace.record(ActorKind::IngressPhase, TraceAction::MessageReceived);
         trace.record(ActorKind::RequestSession, TraceAction::MessageReceived);
         trace.record(ActorKind::NotaDecoder, TraceAction::MessageReceived);
         trace.record(
@@ -48,7 +48,7 @@ impl IngressSupervisor {
     }
 }
 
-impl Actor for IngressSupervisor {
+impl Actor for IngressPhase {
     type Args = Arguments;
     type Error = Infallible;
 
@@ -60,7 +60,7 @@ impl Actor for IngressSupervisor {
     }
 }
 
-impl Message<AcceptEnvelope> for IngressSupervisor {
+impl Message<AcceptEnvelope> for IngressPhase {
     type Reply = PipelineReply;
 
     async fn handle(

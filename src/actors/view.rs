@@ -9,7 +9,7 @@ use super::pipeline::PipelineReply;
 use super::store;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub(super) struct ViewSupervisor {
+pub(super) struct ViewPhase {
     store: ActorRef<store::StoreSupervisor>,
 }
 
@@ -23,7 +23,7 @@ pub struct ReadMemory {
     pub trace: ActorTrace,
 }
 
-impl ViewSupervisor {
+impl ViewPhase {
     fn new(store: ActorRef<store::StoreSupervisor>) -> Self {
         Self { store }
     }
@@ -33,7 +33,7 @@ impl ViewSupervisor {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
-        trace.record(ActorKind::ViewSupervisor, TraceAction::MessageReceived);
+        trace.record(ActorKind::ViewPhase, TraceAction::MessageReceived);
         trace.record(ActorKind::QuerySupervisor, TraceAction::MessageReceived);
         trace.record(ActorKind::QueryPlanner, TraceAction::MessageReceived);
         QueryOperation::from_request(envelope.request()).record_into(&mut trace);
@@ -51,7 +51,7 @@ impl ViewSupervisor {
     }
 }
 
-impl Actor for ViewSupervisor {
+impl Actor for ViewPhase {
     type Args = Arguments;
     type Error = Infallible;
 
@@ -63,7 +63,7 @@ impl Actor for ViewSupervisor {
     }
 }
 
-impl Message<ReadMemory> for ViewSupervisor {
+impl Message<ReadMemory> for ViewPhase {
     type Reply = PipelineReply;
 
     async fn handle(

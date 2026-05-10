@@ -117,11 +117,11 @@ Current long-lived actors:
 ```mermaid
 graph TB
     root[MindRoot] --> config[Config]
-    root --> ingress[IngressSupervisor]
-    root --> dispatch[DispatchSupervisor]
-    root --> domain[DomainSupervisor]
+    root --> ingress[IngressPhase]
+    root --> dispatch[DispatchPhase]
+    root --> domain[DomainPhase]
     root --> store[StoreSupervisor]
-    root --> views[ViewSupervisor]
+    root --> views[ViewPhase]
     root --> subscriptions[SubscriptionSupervisor]
     root --> reply[ReplySupervisor]
 ```
@@ -131,9 +131,9 @@ Current request path for implemented memory/work operations:
 ```mermaid
 graph LR
     caller[caller] --> root[MindRoot]
-    root --> ingress[IngressSupervisor]
-    ingress --> dispatch[DispatchSupervisor]
-    dispatch --> domain[DomainSupervisor]
+    root --> ingress[IngressPhase]
+    ingress --> dispatch[DispatchPhase]
+    dispatch --> domain[DomainPhase]
     domain --> store[StoreSupervisor]
     store --> reducer[MemoryState reducer]
     reducer --> store
