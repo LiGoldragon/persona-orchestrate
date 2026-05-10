@@ -1,8 +1,8 @@
 # persona-mind — architecture
 
-*Actor-backed central state machine for Persona coordination and memory.*
+*Ractor-backed central state machine for Persona coordination and memory.*
 
-> Status: Phase 1 is actor-backed and in-process. The runtime starts a
+> Status: Phase 1 is `ractor`-backed and in-process. The runtime starts a
 > `ractor` tree, routes typed `MindEnvelope` requests through named
 > supervisor actors, and proves the path with manifest/trace tests. Durable
 > `persona-sema` tables are the next storage substrate; current state is still
@@ -45,7 +45,7 @@ flowchart LR
 The crate exposes:
 
 - `MindEnvelope` — caller identity plus one `MindRequest`.
-- `MindRuntime` — in-process actor runtime facade used by tests and future CLI
+- `MindRuntime` — in-process `ractor` facade used by tests and future CLI
   entry.
 - `actors::MindRootHandle` — root actor handle; the only bare
   `Actor::spawn` site.
@@ -110,7 +110,7 @@ are trace-phase actors in Phase 1: they are explicit manifest entries and test
 witnesses, and their boundaries are the names that future fine-grained ractor
 actors must preserve as persistence lands.
 
-### 2.1 · Actor Framework Boundary
+### 2.1 · Ractor Boundary
 
 `persona-mind` uses `ractor` directly. No second actor abstraction is required
 before persistence work proceeds.
@@ -158,7 +158,7 @@ owns a private graph reducer. The reducer appends typed `Event` values for
 memory/work mutations and derives item, edge, note, alias, ready, blocked, and
 recent-event views from that state.
 
-`MemoryState::dispatch` remains as a reducer test facade. Actor runtime users
+`MemoryState::dispatch` remains as a reducer test facade. `MindRuntime` users
 call `MindRuntime::submit`, which wraps the same reducer behind the actor
 path. `MemoryState::dispatch_envelope` is the bridge that carries envelope
 actor identity into event headers and note authorship.

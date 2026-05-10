@@ -23,6 +23,11 @@ struct RustFileCollector {
     files: Vec<SourceFile>,
 }
 
+struct GuardedFileCollector {
+    pending_paths: Vec<PathBuf>,
+    files: Vec<SourceFile>,
+}
+
 struct ForbiddenFragment {
     text: &'static str,
     reason: &'static str,
@@ -48,6 +53,10 @@ impl SourceTree {
 
     fn source_files(&self) -> Vec<SourceFile> {
         RustFileCollector::new(self.root.join("src")).into_files()
+    }
+
+    fn guarded_files(&self) -> Vec<SourceFile> {
+        GuardedFileCollector::new(self.root.clone()).into_files()
     }
 }
 
@@ -85,6 +94,50 @@ impl RustFileCollector {
     }
 }
 
+impl GuardedFileCollector {
+    fn new(root: PathBuf) -> Self {
+        Self {
+            pending_paths: vec![
+                root.join("src"),
+                root.join("tests"),
+                root.join("Cargo.toml"),
+                root.join("Cargo.lock"),
+                root.join("flake.nix"),
+                root.join("README.md"),
+                root.join("ARCHITECTURE.md"),
+            ],
+            files: Vec::new(),
+        }
+    }
+
+    fn into_files(mut self) -> Vec<SourceFile> {
+        while let Some(path) = self.pending_paths.pop() {
+            self.visit_path(path);
+        }
+        self.files
+    }
+
+    fn visit_path(&mut self, path: PathBuf) {
+        if path.is_dir() {
+            let mut child_paths = fs::read_dir(&path)
+                .expect("guarded directory is readable")
+                .map(|entry| entry.expect("guarded entry is readable").path())
+                .collect::<Vec<_>>();
+            child_paths.sort();
+            child_paths.reverse();
+            self.pending_paths.extend(child_paths);
+            return;
+        }
+
+        if !path.is_file() {
+            return;
+        }
+
+        let text = fs::read_to_string(&path).expect("guarded file is readable");
+        self.files.push(SourceFile { path, text });
+    }
+}
+
 impl SourceFile {
     fn relative_name(&self) -> String {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -97,6 +150,10 @@ impl SourceFile {
 
     fn is_root_actor_source(&self) -> bool {
         self.relative_name() == "src/actors/root.rs"
+    }
+
+    fn is_this_guard_source(&self) -> bool {
+        self.relative_name() == "tests/weird_actor_truth.rs"
     }
 
     fn violations_for(&self, fragment: &ForbiddenFragment) -> Vec<SourceViolation> {
@@ -145,7 +202,7 @@ impl ActorRuntimeFixture {
         Self {
             runtime: MindRuntime::start(StoreLocation::new("mind.redb"))
                 .await
-                .expect("actor runtime starts"),
+                .expect("ractor runtime starts"),
             actor,
         }
     }
@@ -162,7 +219,7 @@ impl ActorRuntimeFixture {
     }
 
     async fn stop(self) {
-        self.runtime.stop().await.expect("actor runtime stops");
+        self.runtime.stop().await.expect("ractor runtime stops");
     }
 }
 
@@ -254,6 +311,110 @@ fn actor_adapter_markers_cannot_be_public_zst_nouns() {
     assert!(
         violations.is_empty(),
         "public actor ZST violations:\n{}",
+        violations
+            .iter()
+            .map(SourceViolation::summary)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+#[test]
+fn ractor_is_the_only_actor_library_boundary() {
+    let forbidden_fragments = [
+        ForbiddenFragment {
+            text: "persona-actor",
+            reason: "invented actor abstraction name",
+        },
+        ForbiddenFragment {
+            text: "workspace-actor",
+            reason: "invented actor abstraction name",
+        },
+        ForbiddenFragment {
+            text: "workspace_actor",
+            reason: "invented actor abstraction namespace",
+        },
+        ForbiddenFragment {
+            text: "PersonaActor",
+            reason: "invented actor abstraction type",
+        },
+        ForbiddenFragment {
+            text: "WorkspaceActor",
+            reason: "invented actor abstraction type",
+        },
+        ForbiddenFragment {
+            text: "actix =",
+            reason: "non-ractor actor dependency",
+        },
+        ForbiddenFragment {
+            text: "name = \"actix\"",
+            reason: "non-ractor actor dependency",
+        },
+        ForbiddenFragment {
+            text: "xtra =",
+            reason: "non-ractor actor dependency",
+        },
+        ForbiddenFragment {
+            text: "name = \"xtra\"",
+            reason: "non-ractor actor dependency",
+        },
+        ForbiddenFragment {
+            text: "bastion =",
+            reason: "non-ractor actor dependency",
+        },
+        ForbiddenFragment {
+            text: "name = \"bastion\"",
+            reason: "non-ractor actor dependency",
+        },
+        ForbiddenFragment {
+            text: "kameo =",
+            reason: "non-ractor actor dependency",
+        },
+        ForbiddenFragment {
+            text: "name = \"kameo\"",
+            reason: "non-ractor actor dependency",
+        },
+        ForbiddenFragment {
+            text: "coerce =",
+            reason: "non-ractor actor dependency",
+        },
+        ForbiddenFragment {
+            text: "name = \"coerce\"",
+            reason: "non-ractor actor dependency",
+        },
+        ForbiddenFragment {
+            text: "kompact =",
+            reason: "non-ractor actor dependency",
+        },
+        ForbiddenFragment {
+            text: "name = \"kompact\"",
+            reason: "non-ractor actor dependency",
+        },
+        ForbiddenFragment {
+            text: "stakker =",
+            reason: "non-ractor actor dependency",
+        },
+        ForbiddenFragment {
+            text: "name = \"stakker\"",
+            reason: "non-ractor actor dependency",
+        },
+    ];
+
+    let violations = SourceTree::new()
+        .guarded_files()
+        .into_iter()
+        .filter(|file| !file.is_this_guard_source())
+        .flat_map(|file| {
+            forbidden_fragments
+                .iter()
+                .flat_map(|fragment| file.violations_for(fragment))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        violations.is_empty(),
+        "non-ractor actor boundary violations:\n{}",
         violations
             .iter()
             .map(SourceViolation::summary)

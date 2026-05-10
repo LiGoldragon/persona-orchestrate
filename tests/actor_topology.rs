@@ -15,7 +15,7 @@ impl ActorFixture {
         Self {
             runtime: MindRuntime::start(StoreLocation::new("mind.redb"))
                 .await
-                .expect("actor runtime starts"),
+                .expect("ractor runtime starts"),
             actor: ActorName::new("operator-assistant"),
         }
     }
@@ -32,7 +32,7 @@ impl ActorFixture {
     }
 
     async fn stop(self) {
-        self.runtime.stop().await.expect("actor runtime stops");
+        self.runtime.stop().await.expect("ractor runtime stops");
     }
 }
 
@@ -69,13 +69,13 @@ fn topology_manifest_names_required_actor_planes() {
 }
 
 #[tokio::test]
-async fn open_item_runs_through_actor_backed_write_path() {
+async fn open_item_runs_through_ractor_write_path() {
     let fixture = ActorFixture::new().await;
     let response = fixture
         .submit(MindRequest::Open(Opening {
             kind: Kind::Task,
             priority: Priority::High,
-            title: Title::new("Implement actor-backed mind"),
+            title: Title::new("Implement ractor-backed mind"),
             body: Body::new("Phase one actor path"),
         }))
         .await;
