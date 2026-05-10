@@ -19,6 +19,7 @@ pub use command::MindCommand;
 pub use envelope::MindEnvelope;
 pub use error::{Error, Result};
 pub use kameo::actor::ActorRef;
+pub(crate) use memory::MemoryGraph;
 pub use memory::{MemoryState, StoreLocation};
 pub use role::PersonaRole;
 pub use tables::{MindTables, StoredActivity, StoredClaim};

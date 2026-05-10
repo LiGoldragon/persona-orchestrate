@@ -3,14 +3,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use sema::{Schema, SchemaVersion, Sema, Table};
 use signal_persona_mind::{Activity, RoleName, ScopeReason, ScopeReference, TimestampNanos};
 
-use crate::{Result, StoreLocation};
+use crate::{MemoryGraph, Result, StoreLocation};
 
 const MIND_SCHEMA: Schema = Schema {
-    version: SchemaVersion::new(1),
+    version: SchemaVersion::new(2),
 };
 
 const CLAIMS: Table<&'static str, StoredClaim> = Table::new("claims");
 const ACTIVITIES: Table<u64, StoredActivity> = Table::new("activities");
+const MEMORY_GRAPH: Table<&'static str, MemoryGraph> = Table::new("memory_graph");
+const MEMORY_GRAPH_KEY: &str = "current";
 
 pub struct MindTables {
     database: Sema,
@@ -79,6 +81,7 @@ impl MindTables {
         database.write(|transaction| {
             CLAIMS.ensure(transaction)?;
             ACTIVITIES.ensure(transaction)?;
+            MEMORY_GRAPH.ensure(transaction)?;
             Ok(())
         })?;
         Ok(Self { database })
@@ -136,6 +139,20 @@ impl MindTables {
                 .map(|(_slot, activity)| activity)
                 .collect())
         })?)
+    }
+
+    pub(crate) fn memory_graph(&self) -> Result<Option<MemoryGraph>> {
+        Ok(self
+            .database
+            .read(|transaction| MEMORY_GRAPH.get(transaction, MEMORY_GRAPH_KEY))?)
+    }
+
+    pub(crate) fn replace_memory_graph(&self, graph: &MemoryGraph) -> Result<()> {
+        self.database.write(|transaction| {
+            MEMORY_GRAPH.insert(transaction, MEMORY_GRAPH_KEY, graph)?;
+            Ok(())
+        })?;
+        Ok(())
     }
 
     fn next_activity_slot(&self) -> Result<u64> {

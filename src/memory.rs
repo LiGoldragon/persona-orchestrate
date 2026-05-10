@@ -7,7 +7,7 @@
 use std::cell::RefCell;
 use std::path::Path;
 
-use crate::MindEnvelope;
+use crate::{MindEnvelope, MindTables, Result};
 use signal_persona_mind::{
     ActorName, AliasAddedEvent, AliasAssignment, DisplayId, Edge, EdgeAddedEvent, EdgeKind,
     EdgeTarget, Event, EventHeader, EventSeq, ExternalAlias, Item, ItemKind, ItemOpenedEvent,
@@ -18,14 +18,20 @@ use signal_persona_mind::{
 
 pub struct MemoryState {
     store: StoreLocation,
-    graph: RefCell<Graph>,
+    graph: RefCell<MemoryGraph>,
 }
 
 impl MemoryState {
     pub fn open(store: StoreLocation) -> Self {
+        Self::open_with_graph(store, None)
+    }
+
+    pub(crate) fn open_with_graph(store: StoreLocation, graph: Option<MemoryGraph>) -> Self {
         Self {
             store,
-            graph: RefCell::new(Graph::new(ActorName::new("persona-mind"))),
+            graph: RefCell::new(
+                graph.unwrap_or_else(|| MemoryGraph::new(ActorName::new("persona-mind"))),
+            ),
         }
     }
 
@@ -40,9 +46,30 @@ impl MemoryState {
     pub fn dispatch_envelope(&self, envelope: MindEnvelope) -> Option<MindReply> {
         self.graph.borrow_mut().dispatch_envelope(envelope)
     }
+
+    pub(crate) fn dispatch_envelope_durably(
+        &self,
+        envelope: MindEnvelope,
+        tables: &MindTables,
+    ) -> Result<Option<MindReply>> {
+        let write = MemoryWrite::from_request(envelope.request());
+        if !write.persists() {
+            return Ok(self.dispatch_envelope(envelope));
+        }
+
+        let mut next_graph = self.graph.borrow().clone();
+        let reply = next_graph.dispatch_envelope(envelope);
+        if MemoryReply::new(&reply).committed() {
+            tables.replace_memory_graph(&next_graph)?;
+            self.graph.replace(next_graph);
+        }
+
+        Ok(reply)
+    }
 }
 
-struct Graph {
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MemoryGraph {
     default_actor: ActorName,
     next_item: u64,
     next_event: u64,
@@ -53,7 +80,7 @@ struct Graph {
     events: Vec<Event>,
 }
 
-impl Graph {
+impl MemoryGraph {
     fn new(default_actor: ActorName) -> Self {
         Self {
             default_actor,
@@ -394,6 +421,51 @@ impl Graph {
 
     fn rejected(reason: RejectionReason) -> MindReply {
         MindReply::Rejection(Rejection { reason })
+    }
+}
+
+struct MemoryWrite {
+    persists: bool,
+}
+
+impl MemoryWrite {
+    fn from_request(request: &MindRequest) -> Self {
+        let persists = matches!(
+            request,
+            MindRequest::Opening(_)
+                | MindRequest::NoteSubmission(_)
+                | MindRequest::Link(_)
+                | MindRequest::StatusChange(_)
+                | MindRequest::AliasAssignment(_)
+        );
+        Self { persists }
+    }
+
+    fn persists(&self) -> bool {
+        self.persists
+    }
+}
+
+struct MemoryReply<'reply> {
+    reply: &'reply Option<MindReply>,
+}
+
+impl<'reply> MemoryReply<'reply> {
+    fn new(reply: &'reply Option<MindReply>) -> Self {
+        Self { reply }
+    }
+
+    fn committed(&self) -> bool {
+        matches!(
+            self.reply,
+            Some(
+                MindReply::OpeningReceipt(_)
+                    | MindReply::NoteReceipt(_)
+                    | MindReply::LinkReceipt(_)
+                    | MindReply::StatusReceipt(_)
+                    | MindReply::AliasReceipt(_)
+            )
+        )
     }
 }
 

@@ -4,8 +4,9 @@
 command-line mind.*
 
 > Status: the crate has a real Kameo runtime, mind-local Sema tables for
-> durable role claims and activity records, an in-memory work graph reducer,
-> and a Unix-socket Signal-frame daemon/client transport around `MindRoot`. The
+> durable role claims, activity records, and a typed work-graph snapshot over
+> mind-local Sema, plus a Unix-socket Signal-frame daemon/client transport
+> around `MindRoot`. The
 > `mind` binary can run a daemon and submit NOTA role
 > claim/release/handoff/observation and activity submission/query requests
 > through that daemon. Full work-graph persistence and full NOTA coverage are
@@ -176,11 +177,14 @@ Current implementation:
 
 - `StoreSupervisor` owns `MemoryState`.
 - `StoreSupervisor` owns one `MindTables` handle over `mind.redb`.
+- `MindTables` schema v2 adds the typed `memory_graph` snapshot table.
 - Role claims use a `ClaimLedger` over the shared `MindTables` handle.
 - Activity uses an `ActivityLedger` over the shared `MindTables` handle.
-- `MemoryState` owns a private in-memory graph.
-- Work/memory mutations append typed `Event` values.
-- Queries read the in-memory graph and produce typed `View` replies.
+- `MemoryState` owns a private work graph loaded from the `memory_graph` Sema
+  table at daemon start.
+- Work/memory mutations append typed `Event` values and replace the typed Sema
+  graph snapshot before success replies are emitted.
+- Queries read the loaded work graph and produce typed `View` replies.
 - Role claim, release, handoff, observation, activity submission, and activity
   query are routed through the actor path.
 
@@ -211,6 +215,7 @@ Recommended tables:
 | `claims` | Active role claims and reasons. |
 | `handoffs` | Pending/completed handoff records. |
 | `activities` | Store-stamped role activity. |
+| `memory_graph` | Current typed graph snapshot for the first durable implementation wave. |
 | `items` | Work/memory/decision/question records. |
 | `notes` | Notes attached to items. |
 | `edges` | Dependencies and references. |
@@ -329,6 +334,8 @@ This repo does not own:
   Sema claims table in `mind.redb`.
 - Activity submissions and queries read/write the mind-local Sema activities
   table in `mind.redb`.
+- Work/memory writes replace the typed `memory_graph` snapshot in `mind.redb`
+  before producing success replies.
 - `MindRequest` and `MindReply` come from `signal-persona-mind`; the CLI does
   not define a parallel command vocabulary.
 - All public state operations enter the actor system as one `MindEnvelope`.
@@ -389,6 +396,7 @@ constraints:
 | `daemon_rejects_request_frames_without_auth` | daemon cannot accept unauthenticated request frames. |
 | `client_cannot_reply_without_daemon_signal_frame` | clients cannot fabricate successful daemon replies. |
 | `mind_store_survives_process_restart` | role claims committed by one daemon process are visible after a daemon restart on the same `mind.redb`. |
+| `mind_memory_graph_survives_process_restart` | work items opened by one daemon process are visible after a daemon restart on the same `mind.redb`. |
 | `mind_runs_without_lock_file_projection` | lock files are outside the implementation. |
 | `beads_import_creates_alias_only` | no live BEADS bridge. |
 

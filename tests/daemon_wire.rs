@@ -2,8 +2,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use persona_mind::{MindClient, MindDaemon, MindDaemonEndpoint, MindFrameCodec, StoreLocation};
 use signal_persona_mind::{
-    ActorName, Frame, FrameBody, ItemKind, ItemPriority, MindReply, MindRequest, Opening,
-    RoleClaim, RoleName, RoleObservation, ScopeReason, ScopeReference, TextBody, Title, WirePath,
+    ActorName, Frame, FrameBody, ItemKind, ItemPriority, MindReply, MindRequest, Opening, Query,
+    QueryKind, QueryLimit, RoleClaim, RoleName, RoleObservation, ScopeReason, ScopeReference,
+    TextBody, Title, WirePath,
 };
 use tokio::net::UnixStream;
 
@@ -213,4 +214,62 @@ async fn mind_store_survives_process_restart() {
         operator.claims[0].reason,
         ScopeReason::from_text("durable role claim").expect("scope reason")
     );
+}
+
+#[tokio::test]
+async fn mind_memory_graph_survives_process_restart() {
+    let fixture = SocketFixture::new("memory-restart");
+
+    {
+        let daemon = MindDaemon::new(fixture.endpoint(), fixture.store())
+            .bind()
+            .await
+            .expect("first daemon binds");
+        let endpoint = daemon.endpoint().clone();
+        let server = tokio::spawn(async move { daemon.serve_one().await });
+
+        let client = MindClient::new(endpoint, ActorName::new("operator"));
+        client
+            .submit(MindRequest::Opening(Opening {
+                kind: ItemKind::Task,
+                priority: ItemPriority::High,
+                title: Title::new("Durable mind memory"),
+                body: TextBody::new("The work graph survives daemon restart."),
+            }))
+            .await
+            .expect("opening committed");
+
+        server
+            .await
+            .expect("first daemon joins")
+            .expect("first daemon serves opening");
+    }
+
+    let daemon = MindDaemon::new(fixture.endpoint(), fixture.store())
+        .bind()
+        .await
+        .expect("second daemon binds");
+    let endpoint = daemon.endpoint().clone();
+    let server = tokio::spawn(async move { daemon.serve_one().await });
+
+    let client = MindClient::new(endpoint, ActorName::new("operator"));
+    let reply = client
+        .submit(MindRequest::Query(Query {
+            kind: QueryKind::Open,
+            limit: QueryLimit::new(10),
+        }))
+        .await
+        .expect("query reads durable graph");
+
+    server
+        .await
+        .expect("second daemon joins")
+        .expect("second daemon serves query");
+
+    let MindReply::View(view) = reply else {
+        panic!("expected view reply");
+    };
+
+    assert_eq!(view.items.len(), 1);
+    assert_eq!(view.items[0].title, Title::new("Durable mind memory"));
 }

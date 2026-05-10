@@ -54,9 +54,11 @@ pub struct ReadActivity {
 
 impl StoreSupervisor {
     fn new(store: StoreLocation) -> crate::Result<Self> {
+        let tables = MindTables::open(&store)?;
+        let graph = tables.memory_graph()?;
         Ok(Self {
-            memory: MemoryState::open(store.clone()),
-            tables: MindTables::open(&store)?,
+            memory: MemoryState::open_with_graph(store, graph),
+            tables,
         })
     }
 
@@ -64,7 +66,10 @@ impl StoreSupervisor {
         trace.record(ActorKind::StoreSupervisor, TraceAction::MessageReceived);
         WriteTrace::from_request(envelope.request()).record_into(&mut trace);
 
-        let reply = self.memory.dispatch_envelope(envelope);
+        let reply = self
+            .memory
+            .dispatch_envelope_durably(envelope, &self.tables)
+            .unwrap_or_else(|error| Some(Self::persistence_rejection(error)));
 
         trace.record(ActorKind::EventAppender, TraceAction::MessageReceived);
         trace.record(ActorKind::Commit, TraceAction::CommitCompleted);
