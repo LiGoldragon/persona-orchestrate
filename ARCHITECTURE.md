@@ -1,177 +1,226 @@
 # persona-mind — architecture
 
-*Central state machine for agents working in the Persona ecosystem.*
+*Actor-backed central state machine for Persona coordination and memory.*
 
-`persona-mind` is Persona's heart: the typed state machine for roles,
-claims, handoffs, activity, memory/work items, notes, dependencies,
-decisions, aliases, and ready-work views. It is the typed successor to
-`~/primary/tools/orchestrate` and the replacement for the transitional
-BEADS task substrate.
+> Status: Phase 1 is actor-backed and in-process. The runtime starts a
+> `ractor` tree, routes typed `MindEnvelope` requests through named
+> supervisor actors, and proves the path with manifest/trace tests. Durable
+> `persona-sema` tables are the next storage substrate; current state is still
+> held by the in-memory reducers behind `StoreSupervisorActor`.
 
 ---
 
 ## 0 · TL;DR
 
-This repo owns the central state of Persona. It is not the runtime router,
-harness delivery engine, terminal adapter, or database library.
+`persona-mind` owns Persona's workspace coordination truth: role claims,
+handoffs, activity, work/memory items, notes, dependencies, aliases, events,
+and ready-work views. It consumes `signal-persona-mind`; it does not own
+router delivery, harness lifecycle, terminal adapters, or the sema database
+library.
+
+All public operations enter as a typed `MindEnvelope { actor, request }`. The
+actor field is infrastructure context supplied before persistence; request
+payloads do not mint sender identity. The current runtime is short-lived and
+in-process for tests and the future `mind` CLI, but it already uses the same
+actor path a long-lived host can reuse.
 
 ```mermaid
 flowchart LR
-    agent["agent"]
-    state["MindState"]
-    locks["role lock files"]
-    work["memory/work views"]
-    sema["persona-sema"]
-    database[("mind.redb")]
-
-    agent -->|"claim / memory command"| state
-    state -->|"lock projection"| locks
-    state -->|"ready-work projection"| work
-    state -->|"mind-owned state"| sema
-    sema --> database
+    caller["agent or CLI"] --> envelope["MindEnvelope"]
+    envelope --> root["MindRootActor"]
+    root --> ingress["IngressSupervisorActor"]
+    ingress --> dispatch["DispatchSupervisorActor"]
+    dispatch --> domain["DomainSupervisorActor"]
+    dispatch --> views["ViewSupervisorActor"]
+    domain --> store["StoreSupervisorActor"]
+    views --> store
+    store --> reducer["memory reducers"]
+    store -. "next storage substrate" .-> sema["persona-sema"]
+    sema -.-> db[("mind.redb")]
+    dispatch --> reply["ReplySupervisorActor"]
 ```
 
 ## 1 · Component Surface
 
-`persona-mind` exposes:
+The crate exposes:
 
-- a **library crate** (`persona-mind`) that consumes
-  the `signal-persona-mind` contract, opens
-  `mind.redb` through `persona-sema`, and dispatches
-  typed requests to handlers;
-- a **binary crate** (`mind`) — the canonical CLI agents
-  invoke per call; takes one Nota record on argv (per
-  `lojix-cli`'s discipline), prints one Nota record on
-  stdout;
-- typed `sema::Table<K, V>` constants for the runtime
-  state (`CLAIMS`, `ACTIVITIES`, `ITEMS`, `EVENTS`,
-  `EDGES`, `NOTES`, `ALIASES`, `META`);
-- claim/release/handoff handlers with overlap detection;
-- the activity log: `ActivitySubmission` writers,
-  `ActivityQuery` readers;
-- memory/work graph handlers: open item, add note, link,
-  status change, alias, and query;
-- lock-file projection writers (regenerate `<role>.lock`
-  files on every claim/release/handoff for backward
-  compatibility);
-- the `RoleObservation` snapshot builder.
+- `MindEnvelope` — caller identity plus one `MindRequest`.
+- `MindRuntime` — in-process actor runtime facade used by tests and future CLI
+  entry.
+- `actors::MindRootHandle` — root actor handle; the only bare
+  `Actor::spawn` site.
+- `actors::ActorManifest` — topology witness naming root, long-lived
+  supervisors, and trace-phase actors.
+- `actors::ActorTrace` — per-request witness proving which actor planes ran.
+- `MemoryState` — current in-memory memory/work reducer owned by
+  `StoreSupervisorActor`.
+- `ClaimState` — current in-memory claim reducer used by existing claim tests.
 
-Channel: `signal-persona-mind` (request/reply,
-role, activity, and memory/work request kinds; see that crate's
-`ARCHITECTURE.md`).
+The `mind` binary is still a scaffold. It must become a one-NOTA-record input
+to one-NOTA-record reply surface over the same `MindRuntime` path; it must not
+grow a second command language.
 
-The current direction is grounded by
-`~/primary/reports/operator/100-persona-mind-central-rename-plan.md`.
+## 2 · Runtime Topology
 
-## 2 · State and Ownership
+Phase 1 starts these linked `ractor` actors:
 
-This component owns central mind state — roles, claims, handoff tasks,
-activity, memory/work items, notes, edges, aliases, lock projections, and
-ready-work views. The state lives in this component's **own redb file**
-(`mind.redb`), opened through `persona-sema` (which uses the workspace's
-`sema` database library underneath). Lock files on disk are projections of
-the typed records, regenerated from the database on commit.
+```mermaid
+flowchart TB
+    root["MindRootActor"]
+    root --> config["ConfigActor"]
+    root --> ingress["IngressSupervisorActor"]
+    root --> dispatch["DispatchSupervisorActor"]
+    root --> domain["DomainSupervisorActor"]
+    root --> store["StoreSupervisorActor"]
+    root --> views["ViewSupervisorActor"]
+    root --> subscriptions["SubscriptionSupervisorActor"]
+    root --> reply["ReplySupervisorActor"]
 
-While primary still uses plain lock files (`tools/orchestrate`), this repo
-models the typed replacement. BEADS remains transitional and is never modeled
-as an exclusive lock. Existing BEADS entries can be imported once as mind
-events and aliases; there is no long-term bridge.
+    ingress --> request_session["RequestSessionActor trace phase"]
+    ingress --> identity["CallerIdentityActor trace phase"]
+    ingress --> envelope["EnvelopeActor trace phase"]
 
-Per `~/primary/reports/designer/92-sema-as-database-library-architecture-revamp.md`:
-sema is a library; this component owns its own sema-managed database, the
-same way every other state-bearing component does (criome, persona-router,
-persona-harness, future mentci).
+    dispatch --> memory_flow["MemoryFlowActor trace phase"]
+    dispatch --> query_flow["QueryFlowActor trace phase"]
 
-## 3 · Boundaries
+    domain --> memory_graph["MemoryGraphSupervisorActor trace phase"]
+    memory_graph --> item_open["ItemOpenActor trace phase"]
+    memory_graph --> note_add["NoteAddActor trace phase"]
+    memory_graph --> link["LinkActor trace phase"]
+    memory_graph --> status["StatusChangeActor trace phase"]
+    memory_graph --> alias["AliasAddActor trace phase"]
+
+    store --> read["SemaReadActor trace phase"]
+    store --> writer["SemaWriterActor trace phase"]
+    store --> id["IdMintActor trace phase"]
+    store --> clock["ClockActor trace phase"]
+    store --> append["EventAppendActor trace phase"]
+    store --> commit["CommitActor trace phase"]
+
+    views --> ready["ReadyWorkViewActor trace phase"]
+    views --> blocked["BlockedWorkViewActor trace phase"]
+    views --> recent["RecentActivityViewActor trace phase"]
+
+    reply --> encode["NotaReplyEncodeActor trace phase"]
+    reply --> error["ErrorShapeActor trace phase"]
+```
+
+The long-lived supervisors are real actors today. The smaller operation planes
+are trace-phase actors in Phase 1: they are explicit manifest entries and test
+witnesses, and their boundaries are the names that future fine-grained ractor
+actors must preserve as persistence lands.
+
+## 3 · Request Paths
+
+Memory mutations run through ingress, dispatch, domain, store, and reply:
+
+```mermaid
+sequenceDiagram
+    participant Root as "MindRootActor"
+    participant Ingress as "IngressSupervisorActor"
+    participant Dispatch as "DispatchSupervisorActor"
+    participant Domain as "DomainSupervisorActor"
+    participant Store as "StoreSupervisorActor"
+    participant Reply as "ReplySupervisorActor"
+
+    Root->>Ingress: MindEnvelope
+    Ingress->>Dispatch: identity-checked envelope
+    Dispatch->>Domain: memory mutation
+    Domain->>Store: write intent
+    Store-->>Domain: MindReply
+    Domain-->>Dispatch: reply plus ActorTrace
+    Dispatch->>Reply: shape reply
+    Reply-->>Root: typed reply plus ActorTrace
+```
+
+Queries run through `ViewSupervisorActor` and `SemaReadActor` trace phases.
+The query trace must not include `SemaWriterActor`; `tests/actor_topology.rs`
+asserts that ready-work query is read-only by actor path, not by convention.
+
+## 4 · State and Ownership
+
+`StoreSupervisorActor` is the current state owner. It owns `MemoryState`, which
+owns a private graph reducer. The reducer appends typed `Event` values for
+memory/work mutations and derives item, edge, note, alias, ready, blocked, and
+recent-event views from that state.
+
+`MemoryState::dispatch` remains as a reducer test facade. Actor runtime users
+call `MindRuntime::submit`, which wraps the same reducer behind the actor
+path. `MemoryState::dispatch_envelope` is the bridge that carries envelope
+actor identity into event headers and note authorship.
+
+The durable target is one workspace-local `mind.redb`, opened through
+`persona-sema`. Only the store/write actor plane is allowed to commit writes.
+Queries use read snapshots and return typed views; they do not repair state
+while answering.
+
+## 5 · Boundaries
 
 This repo owns:
 
-- agent role and claim state;
-- claim/release command surfaces;
-- workspace handoff tasks;
-- activity log;
-- memory/work graph records, events, and projections;
-- dependency-aware ready-work queries;
-- projections compatible with the current orchestration protocol.
+- role claim and claim-overlap state;
+- handoff and activity semantics as they land;
+- work/memory graph reducers;
+- actor topology, manifest, and traces for mind operations;
+- the future `mind` CLI surface.
 
 This repo does not own:
 
-- runtime Persona delivery (`persona-router`);
-- harness lifecycle (`persona-harness`);
-- typed table mechanics (`persona-sema` for table layouts; `sema`
-  for the kernel underneath);
-- BEADS internals or BEADS exclusivity;
-- message delivery state (`persona-router`).
+- `signal-persona-mind` contract records;
+- `persona-router` delivery;
+- `persona-harness` lifecycle;
+- terminal or WezTerm state;
+- `persona-sema` or `sema` internals;
+- BEADS as a live backend.
 
-## 4 · Invariants
+## 6 · Invariants
 
-- Every agent knows its role before claiming.
-- Claims prevent overlapping file ownership; BEADS is never claimed.
-- Lock files are projections, not the source of durable typed truth.
-- Open task checks are coordination visibility, not locking.
-- The `mind` CLI takes **one Nota record on argv** (lojix-cli
-  discipline). No flags, no subcommands, no env-var dispatch.
-  New behavior lands as a typed positional field on
-  `MindRequest`, never as a flag.
-- Every memory/work mutation appends a typed `Event`; current
-  item state is a projection, never silent mutation.
-- `Activity::stamped_at` is **store-supplied** at commit
-  time, never agent-supplied (per ESSENCE
-  infrastructure-mints rule).
-- Subscriptions emit only **after** redb commit completes
-  (per assistant/90 §"Emit After Commit"; v1 has no
-  subscriptions yet — request/reply only).
-- Concurrent CLI invocations serialize cleanly through
-  redb's MVCC; multiple readers run in parallel.
-
-## 5 · Runtime tables
-
-| Table | Key | Value | Purpose |
-|---|---|---|---|
-| `CLAIMS` | `(RoleName, ScopeReference)` byte-encoded | `ClaimEntry` | Active claims, one row per (role, scope) pair |
-| `ACTIVITIES` | `u64` (slot) | `Activity` | Append-only activity log |
-| `EVENTS` | `EventSeq` | `Event` | Append-only mind memory log |
-| `ITEMS` | `StableItemId` | `Item` | Current item projection |
-| `EDGES` | `EventSeq` | `Edge` | Typed dependency/reference graph |
-| `NOTES` | `EventSeq` | `Note` | Append-only notes |
-| `ALIASES` | `ExternalAlias` | `StableItemId` | Imported identity and shorthand lookup |
-| `META` | `&str` | `u64` | Slot counter for activities; future schema-version meta |
-
-Composite keys are byte-encoded with explicit ordering
-(per `~/primary/reports/assistant/90-rkyv-redb-design-research.md`
-§"Do Not Store Arbitrary rkyv Archives as redb Keys" — keys
-are designed, not rkyv-encoded).
+- Every public operation enters as one `MindEnvelope`.
+- Store-supplied identity, sequence, time, and operation context are
+  infrastructure concerns; request payloads carry content, not authority.
+- The root actor is the only bare `Actor::spawn` site; children are linked
+  from `MindRootActor`.
+- No shared `Arc<Mutex<T>>` state exists between actors.
+- Queries must not send write intents.
+- Every memory/work mutation appends a typed event.
+- BEADS is transitional import/history only, never an exclusive lock model.
+- Lock files are not durable truth for this crate.
 
 ## Code Map
 
 ```text
-src/lib.rs            module entry; library surface
-src/error.rs          typed Error enum (thiserror)
-src/state.rs          MindState handle (opens mind.redb)
-src/tables.rs         typed sema::Table<K, V> constants
-src/claim.rs          RoleClaim / Release / Handoff handlers
-src/observation.rs    RoleObservation handler (build snapshot)
-src/activity.rs       ActivitySubmission / ActivityQuery handlers
-src/memory.rs         item / note / edge / alias / query handlers
-src/projection.rs     lock-file projection writer
-src/service.rs        frame dispatch (request → handler → reply)
-src/main.rs           mind CLI entry: parse Nota argv, dispatch, print Nota reply
-tests/claim_release_handoff.rs
-tests/activity_log.rs
-tests/memory_graph.rs
-tests/lock_projection.rs
+src/lib.rs                 crate surface
+src/error.rs               typed Error enum and ractor call flattening
+src/envelope.rs            MindEnvelope actor identity wrapper
+src/service.rs             MindRuntime in-process actor facade
+src/actors/mod.rs          actor module exports
+src/actors/root.rs         MindRootActor and MindRootHandle
+src/actors/ingress.rs      ingress supervisor and envelope preparation trace
+src/actors/dispatch.rs     request classification and flow selection
+src/actors/domain.rs       memory mutation domain path
+src/actors/store.rs        current state owner; reducer-backed read/write path
+src/actors/view.rs         query/read-view path
+src/actors/reply.rs        typed reply shaping path
+src/actors/config.rs       store-path configuration actor
+src/actors/subscription.rs post-commit push actor placeholder
+src/actors/manifest.rs     actor topology manifest
+src/actors/trace.rs        actor trace witness types
+src/claim.rs               claim-scope reducer
+src/memory.rs              memory/work graph reducer
+src/role.rs                local role value
+src/main.rs                scaffold CLI
+tests/actor_topology.rs    manifest and actor-path truth tests
+tests/memory.rs            memory/work reducer tests
+tests/smoke.rs             claim reducer tests
 ```
 
 ## See Also
 
-- `~/primary/reports/operator/100-persona-mind-central-rename-plan.md`
-  — current central-component rename and fold-in plan.
-- `~/primary/protocols/orchestration.md` — the current
-  protocol; updated post-Rust-impl.
-- `../signal-persona-mind/ARCHITECTURE.md` — the
-  contract this component consumes.
+- `~/primary/reports/operator/101-persona-mind-full-architecture-proposal.md`
+  — full actor-heavy target architecture.
+- `~/primary/reports/operator/102-actor-heavy-persona-mind-research.md`
+  — actor-system research and ractor recommendation.
+- `~/primary/reports/designer/100-persona-mind-architecture-proposal.md`
+  — concrete ID, envelope, database-path, and table-key decisions.
+- `../signal-persona-mind/ARCHITECTURE.md` — request/reply contract.
 - `../persona-sema/ARCHITECTURE.md` — typed table layer.
-- `../persona/ARCHITECTURE.md` — apex.
-- `~/primary/reports/assistant/90-rkyv-redb-design-research.md`
-  — production sema-interface research informing table
-  design.

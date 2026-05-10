@@ -5,6 +5,7 @@
 
 use std::cell::RefCell;
 
+use crate::MindEnvelope;
 use signal_persona_mind::{
     ActorName, AliasAddedEvent, AliasAssignment, DisplayId, Edge, EdgeAddedEvent, EdgeKind,
     EdgeTarget, Event, EventHeader, EventSeq, ExternalAlias, Item, ItemOpenedEvent, ItemReference,
@@ -33,10 +34,14 @@ impl MemoryState {
     pub fn dispatch(&self, request: MindRequest) -> Option<MindReply> {
         self.graph.borrow_mut().dispatch(request)
     }
+
+    pub fn dispatch_envelope(&self, envelope: MindEnvelope) -> Option<MindReply> {
+        self.graph.borrow_mut().dispatch_envelope(envelope)
+    }
 }
 
 struct Graph {
-    actor: ActorName,
+    default_actor: ActorName,
     next_item: u64,
     next_event: u64,
     next_operation: u64,
@@ -47,9 +52,9 @@ struct Graph {
 }
 
 impl Graph {
-    fn new(actor: ActorName) -> Self {
+    fn new(default_actor: ActorName) -> Self {
         Self {
-            actor,
+            default_actor,
             next_item: 0,
             next_event: 0,
             next_operation: 0,
@@ -61,12 +66,17 @@ impl Graph {
     }
 
     fn dispatch(&mut self, request: MindRequest) -> Option<MindReply> {
+        self.dispatch_envelope(MindEnvelope::new(self.default_actor.clone(), request))
+    }
+
+    fn dispatch_envelope(&mut self, envelope: MindEnvelope) -> Option<MindReply> {
+        let MindEnvelope { actor, request } = envelope;
         match request {
-            MindRequest::Open(opening) => Some(self.open(opening)),
-            MindRequest::AddNote(note) => Some(self.add_note(note)),
-            MindRequest::Link(link) => Some(self.link(link)),
-            MindRequest::ChangeStatus(change) => Some(self.change_status(change)),
-            MindRequest::AddAlias(alias) => Some(self.add_alias(alias)),
+            MindRequest::Open(opening) => Some(self.open(opening, &actor)),
+            MindRequest::AddNote(note) => Some(self.add_note(note, &actor)),
+            MindRequest::Link(link) => Some(self.link(link, &actor)),
+            MindRequest::ChangeStatus(change) => Some(self.change_status(change, &actor)),
+            MindRequest::AddAlias(alias) => Some(self.add_alias(alias, &actor)),
             MindRequest::Query(query) => Some(self.query(query)),
             MindRequest::RoleClaim(_)
             | MindRequest::RoleRelease(_)
@@ -77,9 +87,9 @@ impl Graph {
         }
     }
 
-    fn open(&mut self, opening: Opening) -> MindReply {
+    fn open(&mut self, opening: Opening, actor: &ActorName) -> MindReply {
         self.next_item += 1;
-        let header = self.next_header();
+        let header = self.next_header(actor);
         let item = Item {
             id: StableItemId::new(format!("item-{:016x}", self.next_item)),
             display_id: DisplayIdMint::new(self.next_item).into_display_id(),
@@ -98,15 +108,15 @@ impl Graph {
         MindReply::Opened(OpeningReceipt { event })
     }
 
-    fn add_note(&mut self, submission: NoteSubmission) -> MindReply {
+    fn add_note(&mut self, submission: NoteSubmission, actor: &ActorName) -> MindReply {
         let Some(item) = self.resolve_item(&submission.item) else {
             return Self::rejected(RejectionReason::UnknownItem);
         };
-        let header = self.next_header();
+        let header = self.next_header(actor);
         let note = Note {
             event: header.event,
             item,
-            author: self.actor.clone(),
+            author: actor.clone(),
             body: submission.body,
         };
         let event = NoteAddedEvent { header, note };
@@ -117,14 +127,14 @@ impl Graph {
         MindReply::NoteAdded(signal_persona_mind::NoteReceipt { event })
     }
 
-    fn link(&mut self, link: Link) -> MindReply {
+    fn link(&mut self, link: Link, actor: &ActorName) -> MindReply {
         let Some(source) = self.resolve_item(&link.source) else {
             return Self::rejected(RejectionReason::UnknownItem);
         };
         let Some(target) = self.resolve_link_target(link.target) else {
             return Self::rejected(RejectionReason::UnknownItem);
         };
-        let header = self.next_header();
+        let header = self.next_header(actor);
         let edge = Edge {
             event: header.event,
             source,
@@ -140,13 +150,13 @@ impl Graph {
         MindReply::Linked(signal_persona_mind::LinkReceipt { event })
     }
 
-    fn change_status(&mut self, change: StatusChange) -> MindReply {
+    fn change_status(&mut self, change: StatusChange, actor: &ActorName) -> MindReply {
         let Some(position) = self.resolve_item_position(&change.item) else {
             return Self::rejected(RejectionReason::UnknownItem);
         };
         self.items[position].status = change.status;
         let item = self.items[position].id.clone();
-        let header = self.next_header();
+        let header = self.next_header(actor);
         let event = StatusChangedEvent {
             header,
             item,
@@ -159,7 +169,7 @@ impl Graph {
         MindReply::StatusChanged(signal_persona_mind::StatusReceipt { event })
     }
 
-    fn add_alias(&mut self, assignment: AliasAssignment) -> MindReply {
+    fn add_alias(&mut self, assignment: AliasAssignment, actor: &ActorName) -> MindReply {
         if self.alias_exists(&assignment.alias) {
             return Self::rejected(RejectionReason::DuplicateAlias);
         }
@@ -169,7 +179,7 @@ impl Graph {
 
         let item = self.items[position].id.clone();
         self.items[position].aliases.push(assignment.alias.clone());
-        let header = self.next_header();
+        let header = self.next_header(actor);
         let event = AliasAddedEvent {
             header,
             item,
@@ -370,13 +380,13 @@ impl Graph {
             .any(|item| item.aliases.iter().any(|candidate| candidate == alias))
     }
 
-    fn next_header(&mut self) -> EventHeader {
+    fn next_header(&mut self, actor: &ActorName) -> EventHeader {
         self.next_event += 1;
         self.next_operation += 1;
         EventHeader {
             event: EventSeq::new(self.next_event),
             operation: OperationId::new(format!("op-{:016x}", self.next_operation)),
-            actor: self.actor.clone(),
+            actor: actor.clone(),
         }
     }
 
