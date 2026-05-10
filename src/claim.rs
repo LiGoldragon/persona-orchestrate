@@ -1,4 +1,4 @@
-use crate::{MindTables, PersonaRole, Result, StoreLocation, StoredClaim};
+use crate::{MindTables, PersonaRole, Result, StoredClaim};
 use signal_persona_mind::{
     ClaimAcceptance, ClaimEntry, ClaimRejection, MindReply, RoleClaim, RoleName, RoleObservation,
     RoleRelease, RoleSnapshot, RoleStatus, ScopeConflict, ScopeReference,
@@ -68,15 +68,13 @@ impl ClaimState {
     }
 }
 
-pub struct ClaimLedger {
-    tables: MindTables,
+pub struct ClaimLedger<'tables> {
+    tables: &'tables MindTables,
 }
 
-impl ClaimLedger {
-    pub fn open(store: &StoreLocation) -> Result<Self> {
-        Ok(Self {
-            tables: MindTables::open(store)?,
-        })
+impl<'tables> ClaimLedger<'tables> {
+    pub fn new(tables: &'tables MindTables) -> Self {
+        Self { tables }
     }
 
     pub fn apply_claim(&self, claim: RoleClaim) -> Result<MindReply> {

@@ -3,12 +3,13 @@
 *Central Kameo actor system for Persona coordination, work memory, and the
 command-line mind.*
 
-> Status: the crate has a real Kameo runtime, a mind-local Sema table for
-> durable role claims, an in-memory work graph reducer, and a Unix-socket
-> Signal-frame daemon/client transport around `MindRoot`. The `mind` binary can
-> run a daemon and submit NOTA role claim/release/observation requests through
-> that daemon. Full work-graph persistence, full NOTA coverage, handoff flow,
-> and activity flow are the next foundational implementation wave.
+> Status: the crate has a real Kameo runtime, mind-local Sema tables for
+> durable role claims and activity records, an in-memory work graph reducer,
+> and a Unix-socket Signal-frame daemon/client transport around `MindRoot`. The
+> `mind` binary can run a daemon and submit NOTA role claim/release/observation
+> and activity submission/query requests through that daemon. Full work-graph
+> persistence, full NOTA coverage, and handoff flow are the next foundational
+> implementation wave.
 
 ---
 
@@ -69,7 +70,7 @@ The crate exposes:
 | `MindClient` | Thin local client that attaches Signal auth, submits one request frame, and reads one reply frame. |
 | `MindDaemon` | Bound one-shot daemon harness around `MindRoot`; reads actor identity from Signal auth before entering the root actor. |
 | `MindCommand` | Process-boundary command parser for daemon mode and one NOTA request submission. |
-| `MindTextRequest` / `MindTextReply` | Current NOTA projection for role claim/release/observation requests and replies. |
+| `MindTextRequest` / `MindTextReply` | Current NOTA projection for role claim/release/observation/activity requests and replies. |
 | `mind` binary | Daemon-backed command-line mind for the implemented role-state slice. |
 
 The public protocol is not defined here. `signal-persona-mind` owns the
@@ -80,8 +81,9 @@ state transitions.
 
 The command-line mind is a thin client boundary over a long-lived daemon. The
 daemon owns the runtime path. The current crate has a Unix-socket daemon,
-Signal-frame transport, and a NOTA role-state projection. Full text coverage
-for every `signal-persona-mind` request/reply is not implemented yet.
+Signal-frame transport, and a NOTA projection for role coordination plus
+activity. Full text coverage for every `signal-persona-mind` request/reply is
+not implemented yet.
 
 Command-line interfaces in this workspace interact with daemons. The
 command-line mind is not a one-shot state owner and should not reopen that
@@ -173,14 +175,16 @@ lands.
 Current implementation:
 
 - `StoreSupervisor` owns `MemoryState`.
-- `StoreSupervisor` owns a `ClaimLedger` backed by mind-local Sema tables in
-  `mind.redb`.
+- `StoreSupervisor` owns one `MindTables` handle over `mind.redb`.
+- Role claims use a `ClaimLedger` over the shared `MindTables` handle.
+- Activity uses an `ActivityLedger` over the shared `MindTables` handle.
 - `MemoryState` owns a private in-memory graph.
 - Work/memory mutations append typed `Event` values.
 - Queries read the in-memory graph and produce typed `View` replies.
-- Role claim, release, and observation are routed through the actor path.
-- Role handoff and activity requests are present in the contract but not fully
-  routed through the runtime yet.
+- Role claim, release, observation, activity submission, and activity query are
+  routed through the actor path.
+- Role handoff requests are present in the contract but not fully routed through
+  the runtime yet.
 
 Destination:
 
@@ -308,9 +312,9 @@ This repo does not own:
   NOTA reply record.
 - The `mind` CLI sends Signal frames to the long-lived `persona-mind` daemon;
   it does not own `MindRoot`.
-- The `mind` CLI currently supports role claim, release, and observation text
-  records; unsupported text records fail at the text boundary instead of
-  inventing a second command language.
+- The `mind` CLI currently supports role claim, release, observation, activity
+  submission, and activity query text records; unsupported text records fail at
+  the text boundary instead of inventing a second command language.
 - `MindClient` sends one length-prefixed Signal request frame to the daemon and
   expects one length-prefixed Signal reply frame back.
 - `MindClient` supplies caller identity through Signal auth, not through the
@@ -324,6 +328,8 @@ This repo does not own:
 - The daemon owns `mind.redb`; the CLI never opens the database.
 - Role claims, releases, and observations read/write the mind-local Sema claims
   table in `mind.redb`.
+- Activity submissions and queries read/write the mind-local Sema activities
+  table in `mind.redb`.
 - `MindRequest` and `MindReply` come from `signal-persona-mind`; the CLI does
   not define a parallel command vocabulary.
 - All public state operations enter the actor system as one `MindEnvelope`.
@@ -336,8 +342,7 @@ This repo does not own:
 - Writes append typed events before producing success replies.
 - Role claim, release, and observation are successful runtime paths, not
   unsupported placeholders.
-- Role handoff, activity submission, and activity query are still unsupported
-  until their actors and store semantics land.
+- Role handoff is still unsupported until its actors and store semantics land.
 - BEADS import creates aliases or external references only; there is no live
   BEADS bridge.
 - Lock files are outside the implementation; `persona-mind` replaces them
@@ -375,6 +380,8 @@ constraints:
 | `conflicting_claim_returns_typed_rejection` | conflicts are data. |
 | `role_observation_reads_claims_without_writer` | role observation is a read path. |
 | `role_release_removes_claims_from_observation` | release mutates role state. |
+| `activity_submission_reaches_activity_flow_and_store_mints_time` | activity append goes through activity flow and store-minted time. |
+| `activity_query_reads_recent_activity_without_writer` | activity query is a read path with filters. |
 | `query_ready_uses_reader_without_writer` | read path cannot mutate state. |
 | `daemon_round_trip_uses_signal_frames_over_socket` | one socket request/reply crosses the Signal-frame transport and reaches `MindRoot`. |
 | `daemon_uses_signal_auth_for_actor_identity` | caller identity is derived from Signal auth before building `MindEnvelope`. |
@@ -403,10 +410,11 @@ src/actors/config.rs       store-path configuration actor
 src/actors/subscription.rs post-commit push actor placeholder
 src/actors/manifest.rs     actor topology manifest
 src/actors/trace.rs        actor trace witness types
+src/activity.rs            activity append/query ledger over mind-local Sema
 src/claim.rs               claim-scope reducer
 src/memory.rs              memory/work graph reducer
 src/role.rs                local role value
-src/tables.rs              mind-local Sema schema and role-claim table
+src/tables.rs              mind-local Sema schema and role/activity tables
 src/text.rs                NOTA role-state projection for mind CLI
 src/transport.rs           Unix-socket Signal-frame client/daemon transport
 src/main.rs                command-line entry point

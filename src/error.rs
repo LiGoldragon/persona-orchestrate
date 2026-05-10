@@ -16,6 +16,9 @@ pub enum Error {
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("system time: {0}")]
+    SystemTime(#[from] std::time::SystemTimeError),
+
     #[error("signal frame: {0}")]
     SignalFrame(#[from] signal_core::FrameError),
 

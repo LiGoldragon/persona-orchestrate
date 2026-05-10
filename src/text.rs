@@ -149,11 +149,116 @@ impl RoleObservation {
     }
 }
 
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct ActivitySubmission {
+    pub role: RoleNameText,
+    pub scope: ScopeReferenceText,
+    pub reason: String,
+}
+
+impl ActivitySubmission {
+    fn into_contract(self) -> Result<contract::MindRequest> {
+        Ok(contract::MindRequest::ActivitySubmission(
+            contract::ActivitySubmission {
+                role: self.role.into_contract(),
+                scope: self.scope.into_contract()?,
+                reason: contract::ScopeReason::from_text(self.reason)?,
+            },
+        ))
+    }
+}
+
+#[derive(NotaRecord, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RoleFilter {
+    pub role: RoleNameText,
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct PathPrefix {
+    pub path: String,
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct TaskFilter {
+    pub token: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActivityFilterText {
+    RoleFilter(RoleFilter),
+    PathPrefix(PathPrefix),
+    TaskFilter(TaskFilter),
+}
+
+impl ActivityFilterText {
+    fn into_contract(self) -> Result<contract::ActivityFilter> {
+        match self {
+            Self::RoleFilter(filter) => Ok(contract::ActivityFilter::RoleFilter(
+                filter.role.into_contract(),
+            )),
+            Self::PathPrefix(prefix) => Ok(contract::ActivityFilter::PathPrefix(
+                contract::WirePath::from_absolute_path(prefix.path)?,
+            )),
+            Self::TaskFilter(filter) => Ok(contract::ActivityFilter::TaskToken(
+                contract::TaskToken::from_wire_token(filter.token)?,
+            )),
+        }
+    }
+}
+
+impl NotaEncode for ActivityFilterText {
+    fn encode(&self, encoder: &mut Encoder) -> nota_codec::Result<()> {
+        match self {
+            Self::RoleFilter(filter) => filter.encode(encoder),
+            Self::PathPrefix(prefix) => prefix.encode(encoder),
+            Self::TaskFilter(filter) => filter.encode(encoder),
+        }
+    }
+}
+
+impl NotaDecode for ActivityFilterText {
+    fn decode(decoder: &mut Decoder<'_>) -> nota_codec::Result<Self> {
+        match decoder.peek_record_head()?.as_str() {
+            "RoleFilter" => Ok(Self::RoleFilter(RoleFilter::decode(decoder)?)),
+            "PathPrefix" => Ok(Self::PathPrefix(PathPrefix::decode(decoder)?)),
+            "TaskFilter" => Ok(Self::TaskFilter(TaskFilter::decode(decoder)?)),
+            other => Err(nota_codec::Error::UnknownKindForVerb {
+                verb: "ActivityFilter",
+                got: other.to_string(),
+            }),
+        }
+    }
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct ActivityQuery {
+    pub limit: u32,
+    pub filters: Vec<ActivityFilterText>,
+}
+
+impl ActivityQuery {
+    fn into_contract(self) -> Result<contract::MindRequest> {
+        let filters = self
+            .filters
+            .into_iter()
+            .map(ActivityFilterText::into_contract)
+            .collect::<Result<Vec<_>>>()?;
+        Ok(contract::MindRequest::ActivityQuery(
+            contract::ActivityQuery {
+                limit: self.limit,
+                filters,
+            },
+        ))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MindTextRequest {
     RoleClaim(RoleClaim),
     RoleRelease(RoleRelease),
     RoleObservation(RoleObservation),
+    ActivitySubmission(ActivitySubmission),
+    ActivityQuery(ActivityQuery),
 }
 
 impl MindTextRequest {
@@ -169,6 +274,8 @@ impl MindTextRequest {
             Self::RoleClaim(claim) => claim.into_contract(),
             Self::RoleRelease(release) => Ok(release.into_contract()),
             Self::RoleObservation(observation) => Ok(observation.into_contract()),
+            Self::ActivitySubmission(submission) => submission.into_contract(),
+            Self::ActivityQuery(query) => query.into_contract(),
         }
     }
 }
@@ -179,6 +286,8 @@ impl NotaEncode for MindTextRequest {
             Self::RoleClaim(claim) => claim.encode(encoder),
             Self::RoleRelease(release) => release.encode(encoder),
             Self::RoleObservation(observation) => observation.encode(encoder),
+            Self::ActivitySubmission(submission) => submission.encode(encoder),
+            Self::ActivityQuery(query) => query.encode(encoder),
         }
     }
 }
@@ -189,6 +298,10 @@ impl NotaDecode for MindTextRequest {
             "RoleClaim" => Ok(Self::RoleClaim(RoleClaim::decode(decoder)?)),
             "RoleRelease" => Ok(Self::RoleRelease(RoleRelease::decode(decoder)?)),
             "RoleObservation" => Ok(Self::RoleObservation(RoleObservation::decode(decoder)?)),
+            "ActivitySubmission" => Ok(Self::ActivitySubmission(ActivitySubmission::decode(
+                decoder,
+            )?)),
+            "ActivityQuery" => Ok(Self::ActivityQuery(ActivityQuery::decode(decoder)?)),
             other => Err(nota_codec::Error::UnknownKindForVerb {
                 verb: "MindTextRequest",
                 got: other.to_string(),
@@ -324,6 +437,36 @@ impl Activity {
     }
 }
 
+#[derive(NotaRecord, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActivityAcknowledgment {
+    pub slot: u64,
+}
+
+impl ActivityAcknowledgment {
+    fn from_contract(acknowledgment: contract::ActivityAcknowledgment) -> Self {
+        Self {
+            slot: acknowledgment.slot,
+        }
+    }
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct ActivityList {
+    pub records: Vec<Activity>,
+}
+
+impl ActivityList {
+    fn from_contract(list: contract::ActivityList) -> Self {
+        Self {
+            records: list
+                .records
+                .into_iter()
+                .map(Activity::from_contract)
+                .collect(),
+        }
+    }
+}
+
 #[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
 pub struct RoleSnapshot {
     pub roles: Vec<RoleStatus>,
@@ -353,6 +496,8 @@ pub enum MindTextReply {
     ClaimRejection(ClaimRejection),
     ReleaseAcknowledgment(ReleaseAcknowledgment),
     RoleSnapshot(RoleSnapshot),
+    ActivityAcknowledgment(ActivityAcknowledgment),
+    ActivityList(ActivityList),
 }
 
 impl MindTextReply {
@@ -370,17 +515,17 @@ impl MindTextReply {
             contract::MindReply::RoleSnapshot(snapshot) => {
                 Ok(Self::RoleSnapshot(RoleSnapshot::from_contract(snapshot)))
             }
+            contract::MindReply::ActivityAcknowledgment(acknowledgment) => Ok(
+                Self::ActivityAcknowledgment(ActivityAcknowledgment::from_contract(acknowledgment)),
+            ),
+            contract::MindReply::ActivityList(list) => {
+                Ok(Self::ActivityList(ActivityList::from_contract(list)))
+            }
             contract::MindReply::HandoffAcceptance(_) => Err(Error::UnsupportedTextReply {
                 reply: "HandoffAcceptance",
             }),
             contract::MindReply::HandoffRejection(_) => Err(Error::UnsupportedTextReply {
                 reply: "HandoffRejection",
-            }),
-            contract::MindReply::ActivityAcknowledgment(_) => Err(Error::UnsupportedTextReply {
-                reply: "ActivityAcknowledgment",
-            }),
-            contract::MindReply::ActivityList(_) => Err(Error::UnsupportedTextReply {
-                reply: "ActivityList",
             }),
             contract::MindReply::OpeningReceipt(_) => Err(Error::UnsupportedTextReply {
                 reply: "OpeningReceipt",
@@ -418,6 +563,8 @@ impl NotaEncode for MindTextReply {
             Self::ClaimRejection(rejection) => rejection.encode(encoder),
             Self::ReleaseAcknowledgment(acknowledgment) => acknowledgment.encode(encoder),
             Self::RoleSnapshot(snapshot) => snapshot.encode(encoder),
+            Self::ActivityAcknowledgment(acknowledgment) => acknowledgment.encode(encoder),
+            Self::ActivityList(list) => list.encode(encoder),
         }
     }
 }

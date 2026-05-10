@@ -7,9 +7,9 @@ use persona_mind::{
     SubmitEnvelope,
 };
 use signal_persona_mind::{
-    ActorName, ItemKind, ItemPriority, MindReply, MindRequest, Opening, Query, QueryKind,
-    QueryLimit, RoleClaim, RoleName, RoleObservation, RoleRelease, ScopeReason, ScopeReference,
-    TextBody, Title, WirePath,
+    ActivityFilter, ActivityQuery, ActivitySubmission, ActorName, ItemKind, ItemPriority,
+    MindReply, MindRequest, Opening, Query, QueryKind, QueryLimit, RoleClaim, RoleName,
+    RoleObservation, RoleRelease, ScopeReason, ScopeReference, TextBody, Title, WirePath,
 };
 
 struct ActorFixture {
@@ -326,6 +326,97 @@ async fn role_release_removes_claims_from_observation() {
         .expect("operator status exists");
 
     assert!(operator.claims.is_empty());
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn activity_submission_reaches_activity_flow_and_store_mints_time() {
+    let fixture = ActorFixture::new().await;
+    let response = fixture
+        .submit(MindRequest::ActivitySubmission(ActivitySubmission {
+            role: RoleName::Operator,
+            scope: ScopeReference::Path(
+                WirePath::from_absolute_path("/git/github.com/LiGoldragon/persona-mind")
+                    .expect("absolute path"),
+            ),
+            reason: ScopeReason::from_text("record durable activity").expect("reason"),
+        }))
+        .await;
+
+    let MindReply::ActivityAcknowledgment(acknowledgment) = response.reply().expect("reply exists")
+    else {
+        panic!("expected activity acknowledgment");
+    };
+
+    assert_eq!(acknowledgment.slot, 0);
+    assert!(response.trace().contains_ordered(&[
+        ActorKind::MindRoot,
+        ActorKind::IngressPhase,
+        ActorKind::DispatchPhase,
+        ActorKind::ActivityFlow,
+        ActorKind::DomainPhase,
+        ActorKind::StoreSupervisor,
+        ActorKind::Clock,
+        ActorKind::SemaWriter,
+        ActorKind::Commit,
+        ActorKind::ReplySupervisor,
+    ]));
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn activity_query_reads_recent_activity_without_writer() {
+    let fixture = ActorFixture::new().await;
+    let first_scope = ScopeReference::Path(
+        WirePath::from_absolute_path("/git/github.com/LiGoldragon/persona-mind")
+            .expect("absolute path"),
+    );
+    let second_scope = ScopeReference::Path(
+        WirePath::from_absolute_path("/git/github.com/LiGoldragon/persona-router")
+            .expect("absolute path"),
+    );
+    let _first = fixture
+        .submit(MindRequest::ActivitySubmission(ActivitySubmission {
+            role: RoleName::Operator,
+            scope: first_scope,
+            reason: ScopeReason::from_text("first activity").expect("reason"),
+        }))
+        .await;
+    let _second = fixture
+        .submit(MindRequest::ActivitySubmission(ActivitySubmission {
+            role: RoleName::Designer,
+            scope: second_scope.clone(),
+            reason: ScopeReason::from_text("second activity").expect("reason"),
+        }))
+        .await;
+
+    let response = fixture
+        .submit(MindRequest::ActivityQuery(ActivityQuery {
+            limit: 10,
+            filters: vec![ActivityFilter::PathPrefix(
+                WirePath::from_absolute_path("/git/github.com/LiGoldragon/persona-router")
+                    .expect("absolute path"),
+            )],
+        }))
+        .await;
+
+    let MindReply::ActivityList(list) = response.reply().expect("reply exists") else {
+        panic!("expected activity list");
+    };
+
+    assert_eq!(list.records.len(), 1);
+    assert_eq!(list.records[0].role, RoleName::Designer);
+    assert_eq!(list.records[0].scope, second_scope);
+    assert_eq!(
+        list.records[0].reason,
+        ScopeReason::from_text("second activity").expect("reason")
+    );
+    assert!(list.records[0].stamped_at.value() > 0);
+    assert!(response.trace().contains(ActorKind::RecentActivityView));
+    assert!(response.trace().contains(ActorKind::SemaReader));
+    assert!(!response.trace().contains(ActorKind::SemaWriter));
 
     fixture.stop().await;
 }

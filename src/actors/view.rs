@@ -28,6 +28,11 @@ pub struct ReadClaims {
     pub trace: ActorTrace,
 }
 
+pub struct ReadActivity {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
 impl ViewPhase {
     fn new(store: ActorRef<store::StoreSupervisor>) -> Self {
         Self { store }
@@ -65,6 +70,20 @@ impl ViewPhase {
 
         self.store
             .ask(store::ReadClaims { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn read_activity(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        trace.record(ActorKind::ViewPhase, TraceAction::MessageReceived);
+        trace.record(ActorKind::RecentActivityView, TraceAction::MessageReceived);
+
+        self.store
+            .ask(store::ReadActivity { envelope, trace })
             .await
             .map_err(|error| crate::Error::ActorCall(error.to_string()))
     }
@@ -106,6 +125,21 @@ impl Message<ReadClaims> for ViewPhase {
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         match self.read_claims(message.envelope, message.trace).await {
+            Ok(reply) => reply,
+            Err(_error) => PipelineReply::new(None, ActorTrace::new()),
+        }
+    }
+}
+
+impl Message<ReadActivity> for ViewPhase {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: ReadActivity,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        match self.read_activity(message.envelope, message.trace).await {
             Ok(reply) => reply,
             Err(_error) => PipelineReply::new(None, ActorTrace::new()),
         }

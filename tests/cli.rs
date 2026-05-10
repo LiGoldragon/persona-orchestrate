@@ -49,6 +49,22 @@ fn nota_role_claim_text_maps_to_signal_request() {
     assert_eq!(claim.scopes.len(), 1);
 }
 
+#[test]
+fn nota_activity_submission_text_maps_to_signal_request() {
+    let request = persona_mind::MindTextRequest::from_nota(
+        "(ActivitySubmission Operator (Path \"/git/github.com/LiGoldragon/persona-mind\") \"activity via text\")",
+    )
+    .expect("text decodes")
+    .into_request()
+    .expect("request maps to signal");
+
+    let MindRequest::ActivitySubmission(submission) = request else {
+        panic!("expected activity submission");
+    };
+
+    assert_eq!(submission.role, RoleName::Operator);
+}
+
 #[tokio::test]
 async fn mind_cli_sends_nota_role_claim_to_daemon() {
     let fixture = CliFixture::new("claim");
@@ -78,6 +94,50 @@ async fn mind_cli_sends_nota_role_claim_to_daemon() {
         text,
         "(ClaimAcceptance Operator [(Path \"/git/github.com/LiGoldragon/persona-mind\")])\n"
     );
+}
+
+#[tokio::test]
+async fn mind_cli_sends_activity_submission_and_query_to_daemon() {
+    let fixture = CliFixture::new("activity");
+    let daemon = fixture.bind().await;
+    let endpoint = daemon.endpoint().clone();
+    let server = tokio::spawn(async move { daemon.serve_count(2).await });
+
+    let mut submission_output = Vec::new();
+    MindCommand::from_arguments([
+        "--socket",
+        endpoint.as_path().to_str().expect("socket path utf8"),
+        "--actor",
+        "operator",
+        "(ActivitySubmission Operator (Path \"/git/github.com/LiGoldragon/persona-mind\") \"activity via cli\")",
+    ])
+    .run(&mut submission_output)
+    .await
+    .expect("cli sends activity");
+
+    let mut query_output = Vec::new();
+    MindCommand::from_arguments([
+        "--socket",
+        endpoint.as_path().to_str().expect("socket path utf8"),
+        "--actor",
+        "operator",
+        "(ActivityQuery 5 [])",
+    ])
+    .run(&mut query_output)
+    .await
+    .expect("cli queries activity");
+
+    server
+        .await
+        .expect("daemon task joins")
+        .expect("daemon serves activity requests");
+
+    assert_eq!(
+        String::from_utf8(submission_output).expect("cli output utf8"),
+        "(ActivityAcknowledgment 0)\n"
+    );
+    let text = String::from_utf8(query_output).expect("cli output utf8");
+    assert!(text.contains("(ActivityList [(Activity Operator (Path \"/git/github.com/LiGoldragon/persona-mind\") \"activity via cli\""));
 }
 
 #[tokio::test]

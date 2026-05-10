@@ -2,14 +2,14 @@ use kameo::actor::{Actor, ActorRef};
 use kameo::message::{Context, Message};
 use signal_persona_mind::MindRequest;
 
-use crate::{ClaimLedger, MemoryState, MindEnvelope, StoreLocation};
+use crate::{ActivityLedger, ClaimLedger, MemoryState, MindEnvelope, MindTables, StoreLocation};
 
 use super::pipeline::PipelineReply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
 pub(super) struct StoreSupervisor {
     memory: MemoryState,
-    claims: ClaimLedger,
+    tables: MindTables,
 }
 
 #[derive(Clone)]
@@ -37,11 +37,21 @@ pub struct ReadClaims {
     pub trace: ActorTrace,
 }
 
+pub struct ApplyActivity {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
+pub struct ReadActivity {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
 impl StoreSupervisor {
     fn new(store: StoreLocation) -> crate::Result<Self> {
         Ok(Self {
             memory: MemoryState::open(store.clone()),
-            claims: ClaimLedger::open(&store)?,
+            tables: MindTables::open(&store)?,
         })
     }
 
@@ -72,12 +82,12 @@ impl StoreSupervisor {
 
         let reply = match envelope.request().clone() {
             MindRequest::RoleClaim(claim) => Some(
-                self.claims
+                ClaimLedger::new(&self.tables)
                     .apply_claim(claim)
                     .unwrap_or_else(Self::persistence_rejection),
             ),
             MindRequest::RoleRelease(release) => Some(
-                self.claims
+                ClaimLedger::new(&self.tables)
                     .apply_release(release)
                     .unwrap_or_else(Self::persistence_rejection),
             ),
@@ -95,8 +105,44 @@ impl StoreSupervisor {
 
         let reply = match envelope.request().clone() {
             MindRequest::RoleObservation(observation) => Some(
-                self.claims
+                ClaimLedger::new(&self.tables)
                     .observe(observation)
+                    .unwrap_or_else(Self::persistence_rejection),
+            ),
+            _ => None,
+        };
+
+        PipelineReply::new(reply, trace)
+    }
+
+    fn apply_activity(&self, envelope: MindEnvelope, mut trace: ActorTrace) -> PipelineReply {
+        trace.record(ActorKind::StoreSupervisor, TraceAction::MessageReceived);
+        trace.record(ActorKind::Clock, TraceAction::MessageReceived);
+        trace.record(ActorKind::SemaWriter, TraceAction::WriteIntentSent);
+
+        let reply = match envelope.request().clone() {
+            MindRequest::ActivitySubmission(submission) => Some(
+                ActivityLedger::new(&self.tables)
+                    .submit(submission)
+                    .unwrap_or_else(Self::persistence_rejection),
+            ),
+            _ => None,
+        };
+
+        trace.record(ActorKind::ActivityAppender, TraceAction::MessageReceived);
+        trace.record(ActorKind::Commit, TraceAction::CommitCompleted);
+        PipelineReply::new(reply, trace)
+    }
+
+    fn read_activity(&self, envelope: MindEnvelope, mut trace: ActorTrace) -> PipelineReply {
+        trace.record(ActorKind::StoreSupervisor, TraceAction::MessageReceived);
+        trace.record(ActorKind::SemaReader, TraceAction::MessageReceived);
+        trace.record(ActorKind::RecentActivityView, TraceAction::MessageReceived);
+
+        let reply = match envelope.request().clone() {
+            MindRequest::ActivityQuery(query) => Some(
+                ActivityLedger::new(&self.tables)
+                    .query(query)
                     .unwrap_or_else(Self::persistence_rejection),
             ),
             _ => None,
@@ -169,6 +215,30 @@ impl Message<ReadClaims> for StoreSupervisor {
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         self.read_claims(message.envelope, message.trace)
+    }
+}
+
+impl Message<ApplyActivity> for StoreSupervisor {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: ApplyActivity,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.apply_activity(message.envelope, message.trace)
+    }
+}
+
+impl Message<ReadActivity> for StoreSupervisor {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: ReadActivity,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.read_activity(message.envelope, message.trace)
     }
 }
 
