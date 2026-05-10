@@ -83,6 +83,37 @@ fn nota_role_handoff_text_maps_to_signal_request() {
     assert_eq!(handoff.scopes.len(), 1);
 }
 
+#[test]
+fn nota_opening_text_maps_to_signal_request() {
+    let request =
+        persona_mind::MindTextRequest::from_nota("(Opening Task High \"Open work\" \"body\")")
+            .expect("text decodes")
+            .into_request()
+            .expect("request maps to signal");
+
+    let MindRequest::Opening(opening) = request else {
+        panic!("expected opening");
+    };
+
+    assert_eq!(opening.kind, signal_persona_mind::ItemKind::Task);
+    assert_eq!(opening.priority, signal_persona_mind::ItemPriority::High);
+}
+
+#[test]
+fn nota_query_text_maps_to_signal_request() {
+    let request = persona_mind::MindTextRequest::from_nota("(Query (Open) 10)")
+        .expect("text decodes")
+        .into_request()
+        .expect("request maps to signal");
+
+    let MindRequest::Query(query) = request else {
+        panic!("expected query");
+    };
+
+    assert_eq!(query.kind, signal_persona_mind::QueryKind::Open);
+    assert_eq!(query.limit.into_u16(), 10);
+}
+
 #[tokio::test]
 async fn mind_cli_sends_nota_role_claim_to_daemon() {
     let fixture = CliFixture::new("claim");
@@ -213,6 +244,51 @@ async fn mind_cli_sends_role_handoff_to_daemon() {
     let text = String::from_utf8(observation_output).expect("cli output utf8");
     assert!(text.contains("(RoleStatus Operator [])"));
     assert!(text.contains("(RoleStatus Designer [(ClaimEntry (Path \"/git/github.com/LiGoldragon/persona-mind\") \"handoff via cli\")]"));
+}
+
+#[tokio::test]
+async fn mind_cli_opens_and_queries_work_item_through_daemon() {
+    let fixture = CliFixture::new("opening-query");
+    let daemon = fixture.bind().await;
+    let endpoint = daemon.endpoint().clone();
+    let server = tokio::spawn(async move { daemon.serve_count(2).await });
+
+    let mut opening_output = Vec::new();
+    MindCommand::from_arguments([
+        "--socket",
+        endpoint.as_path().to_str().expect("socket path utf8"),
+        "--actor",
+        "operator",
+        "(Opening Task High \"Open CLI-visible work\" \"created through mind text\")",
+    ])
+    .run(&mut opening_output)
+    .await
+    .expect("cli opens work item");
+
+    let mut query_output = Vec::new();
+    MindCommand::from_arguments([
+        "--socket",
+        endpoint.as_path().to_str().expect("socket path utf8"),
+        "--actor",
+        "operator",
+        "(Query (Open) 10)",
+    ])
+    .run(&mut query_output)
+    .await
+    .expect("cli queries work items");
+
+    server
+        .await
+        .expect("daemon task joins")
+        .expect("daemon serves requests");
+
+    let opening = String::from_utf8(opening_output).expect("opening output utf8");
+    assert!(opening.contains("(OpeningReceipt"));
+    assert!(opening.contains("\"Open CLI-visible work\""));
+
+    let query = String::from_utf8(query_output).expect("query output utf8");
+    assert!(query.contains("(View [(Item"));
+    assert!(query.contains("\"Open CLI-visible work\""));
 }
 
 #[tokio::test]
