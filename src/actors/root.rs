@@ -9,8 +9,8 @@ use super::manifest::ActorManifest;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 use super::{config, dispatch, domain, ingress, reply, store, subscription, view};
 
-struct MindRootActor {
-    ingress: ActorRef<ingress::IngressSupervisorActor>,
+pub(crate) struct MindRoot {
+    ingress: ActorRef<ingress::IngressSupervisor>,
     manifest: ActorManifest,
 }
 
@@ -28,7 +28,22 @@ pub struct SubmitEnvelope {
     pub envelope: MindEnvelope,
 }
 
-struct ReadManifest;
+pub(crate) struct ReadManifest {
+    probe: ManifestProbe,
+}
+
+impl ReadManifest {
+    pub(crate) fn expecting_at_least(minimum_actors: usize) -> Self {
+        Self {
+            probe: ManifestProbe { minimum_actors },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ManifestProbe {
+    minimum_actors: usize,
+}
 
 #[derive(Debug, kameo::Reply)]
 pub struct RootReply {
@@ -50,14 +65,29 @@ impl RootReply {
     }
 }
 
-impl MindRootActor {
-    fn new(ingress: ActorRef<ingress::IngressSupervisorActor>, manifest: ActorManifest) -> Self {
+impl MindRoot {
+    fn new(ingress: ActorRef<ingress::IngressSupervisor>, manifest: ActorManifest) -> Self {
         Self { ingress, manifest }
+    }
+
+    pub(crate) async fn start(arguments: Arguments) -> Result<ActorRef<Self>> {
+        let actor_reference = Self::spawn(arguments);
+        actor_reference.wait_for_startup().await;
+        Ok(actor_reference)
+    }
+
+    pub(crate) async fn stop(actor_reference: ActorRef<Self>) -> Result<()> {
+        actor_reference
+            .stop_gracefully()
+            .await
+            .map_err(|error| Error::ActorCall(error.to_string()))?;
+        actor_reference.wait_for_shutdown().await;
+        Ok(())
     }
 
     async fn submit(&self, envelope: MindEnvelope) -> Result<RootReply> {
         let mut trace = ActorTrace::new();
-        trace.record(ActorKind::MindRootActor, TraceAction::MessageReceived);
+        trace.record(ActorKind::MindRoot, TraceAction::MessageReceived);
 
         let mut pipeline = self
             .ingress
@@ -66,49 +96,13 @@ impl MindRootActor {
             .map_err(|error| Error::ActorCall(error.to_string()))?;
         pipeline
             .trace
-            .record(ActorKind::MindRootActor, TraceAction::MessageReplied);
+            .record(ActorKind::MindRoot, TraceAction::MessageReplied);
 
         Ok(RootReply::new(pipeline.reply, pipeline.trace))
     }
 }
 
-pub struct MindRootHandle {
-    actor_reference: ActorRef<MindRootActor>,
-}
-
-impl MindRootHandle {
-    pub async fn start(arguments: Arguments) -> Result<Self> {
-        let actor_reference = MindRootActor::spawn(arguments);
-        actor_reference.wait_for_startup().await;
-
-        Ok(Self { actor_reference })
-    }
-
-    pub async fn submit(&self, envelope: MindEnvelope) -> Result<RootReply> {
-        self.actor_reference
-            .ask(SubmitEnvelope { envelope })
-            .await
-            .map_err(|error| Error::ActorCall(error.to_string()))
-    }
-
-    pub async fn manifest(&self) -> Result<ActorManifest> {
-        self.actor_reference
-            .ask(ReadManifest)
-            .await
-            .map_err(|error| Error::ActorCall(error.to_string()))
-    }
-
-    pub async fn stop(self) -> Result<()> {
-        self.actor_reference
-            .stop_gracefully()
-            .await
-            .map_err(|error| Error::ActorCall(error.to_string()))?;
-        self.actor_reference.wait_for_shutdown().await;
-        Ok(())
-    }
-}
-
-impl Actor for MindRootActor {
+impl Actor for MindRoot {
     type Args = Arguments;
     type Error = Infallible;
 
@@ -118,7 +112,7 @@ impl Actor for MindRootActor {
     ) -> std::result::Result<Self, Self::Error> {
         let manifest = ActorManifest::persona_mind_phase_one();
 
-        let _config = config::ConfigActor::supervise(
+        let _config = config::Config::supervise(
             &actor_reference,
             config::Arguments {
                 store: arguments.store.clone(),
@@ -127,7 +121,7 @@ impl Actor for MindRootActor {
         .spawn()
         .await;
 
-        let store = store::StoreSupervisorActor::supervise(
+        let store = store::StoreSupervisor::supervise(
             &actor_reference,
             store::Arguments {
                 store: arguments.store.clone(),
@@ -136,7 +130,7 @@ impl Actor for MindRootActor {
         .spawn()
         .await;
 
-        let _subscription = subscription::SubscriptionSupervisorActor::supervise(
+        let _subscription = subscription::SubscriptionSupervisor::supervise(
             &actor_reference,
             subscription::Arguments::default(),
         )
@@ -144,11 +138,11 @@ impl Actor for MindRootActor {
         .await;
 
         let reply =
-            reply::ReplySupervisorActor::supervise(&actor_reference, reply::Arguments::default())
+            reply::ReplySupervisor::supervise(&actor_reference, reply::Arguments::default())
                 .spawn()
                 .await;
 
-        let view = view::ViewSupervisorActor::supervise(
+        let view = view::ViewSupervisor::supervise(
             &actor_reference,
             view::Arguments {
                 store: store.clone(),
@@ -157,7 +151,7 @@ impl Actor for MindRootActor {
         .spawn()
         .await;
 
-        let domain = domain::DomainSupervisorActor::supervise(
+        let domain = domain::DomainSupervisor::supervise(
             &actor_reference,
             domain::Arguments {
                 store: store.clone(),
@@ -166,7 +160,7 @@ impl Actor for MindRootActor {
         .spawn()
         .await;
 
-        let dispatch = dispatch::DispatchSupervisorActor::supervise(
+        let dispatch = dispatch::DispatchSupervisor::supervise(
             &actor_reference,
             dispatch::Arguments {
                 domain,
@@ -177,7 +171,7 @@ impl Actor for MindRootActor {
         .spawn()
         .await;
 
-        let ingress = ingress::IngressSupervisorActor::supervise(
+        let ingress = ingress::IngressSupervisor::supervise(
             &actor_reference,
             ingress::Arguments { dispatch },
         )
@@ -188,7 +182,7 @@ impl Actor for MindRootActor {
     }
 }
 
-impl Message<SubmitEnvelope> for MindRootActor {
+impl Message<SubmitEnvelope> for MindRoot {
     type Reply = RootReply;
 
     async fn handle(
@@ -200,22 +194,23 @@ impl Message<SubmitEnvelope> for MindRootActor {
             Ok(reply) => reply,
             Err(_error) => {
                 let mut trace = ActorTrace::new();
-                trace.record(ActorKind::MindRootActor, TraceAction::MessageReceived);
-                trace.record(ActorKind::ErrorShapeActor, TraceAction::MessageReplied);
+                trace.record(ActorKind::MindRoot, TraceAction::MessageReceived);
+                trace.record(ActorKind::ErrorShaper, TraceAction::MessageReplied);
                 RootReply::new(None, trace)
             }
         }
     }
 }
 
-impl Message<ReadManifest> for MindRootActor {
+impl Message<ReadManifest> for MindRoot {
     type Reply = ActorManifest;
 
     async fn handle(
         &mut self,
-        _message: ReadManifest,
+        message: ReadManifest,
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
+        let _satisfied = self.manifest.actors().len() >= message.probe.minimum_actors;
         self.manifest.clone()
     }
 }

@@ -6,7 +6,7 @@ use signal_persona_mind::MindReply;
 use super::pipeline::PipelineReply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub(super) struct ReplySupervisorActor {
+pub(super) struct ReplySupervisor {
     shaped_reply_count: u64,
 }
 
@@ -20,7 +20,7 @@ pub struct ShapeReply {
     pub trace: ActorTrace,
 }
 
-impl ReplySupervisorActor {
+impl ReplySupervisor {
     fn new(arguments: Arguments) -> Self {
         Self {
             shaped_reply_count: arguments.shaped_reply_count,
@@ -29,24 +29,21 @@ impl ReplySupervisorActor {
 
     fn shape(&mut self, reply: Option<MindReply>, mut trace: ActorTrace) -> PipelineReply {
         self.shaped_reply_count += 1;
-        trace.record(
-            ActorKind::ReplySupervisorActor,
-            TraceAction::MessageReceived,
-        );
+        trace.record(ActorKind::ReplySupervisor, TraceAction::MessageReceived);
         match reply {
             Some(reply) => {
-                trace.record(ActorKind::NotaReplyEncodeActor, TraceAction::MessageReplied);
+                trace.record(ActorKind::NotaReplyEncoder, TraceAction::MessageReplied);
                 PipelineReply::new(Some(reply), trace)
             }
             None => {
-                trace.record(ActorKind::ErrorShapeActor, TraceAction::MessageReplied);
+                trace.record(ActorKind::ErrorShaper, TraceAction::MessageReplied);
                 PipelineReply::new(None, trace)
             }
         }
     }
 }
 
-impl Actor for ReplySupervisorActor {
+impl Actor for ReplySupervisor {
     type Args = Arguments;
     type Error = Infallible;
 
@@ -58,7 +55,7 @@ impl Actor for ReplySupervisorActor {
     }
 }
 
-impl Message<ShapeReply> for ReplySupervisorActor {
+impl Message<ShapeReply> for ReplySupervisor {
     type Reply = PipelineReply;
 
     async fn handle(

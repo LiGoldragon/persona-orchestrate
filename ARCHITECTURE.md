@@ -6,9 +6,7 @@
 > `kameo` tree, routes typed `MindEnvelope` requests through named
 > supervisor actors, and proves the path with manifest/trace tests. Durable
 > `persona-sema` tables are the next storage substrate; current state is still
-> held by in-memory mind reducers behind the state/write actor path. The
-> current internal trace name `StoreSupervisorActor` is historical; it does not
-> mean a shared store component.
+> held by in-memory mind reducers behind the mind-owned state/write path.
 
 ---
 
@@ -29,17 +27,17 @@ actor path a long-lived host can reuse.
 ```mermaid
 flowchart LR
     caller["agent or CLI"] --> envelope["MindEnvelope"]
-    envelope --> root["MindRootActor"]
-    root --> ingress["IngressSupervisorActor"]
-    ingress --> dispatch["DispatchSupervisorActor"]
-    dispatch --> domain["DomainSupervisorActor"]
-    dispatch --> views["ViewSupervisorActor"]
-    domain --> store["StoreSupervisorActor (mind state/write plane)"]
+    envelope --> root["MindRoot"]
+    root --> ingress["IngressSupervisor"]
+    ingress --> dispatch["DispatchSupervisor"]
+    dispatch --> domain["DomainSupervisor"]
+    dispatch --> views["ViewSupervisor"]
+    domain --> store["StoreSupervisor (mind state/write plane)"]
     views --> store
     store --> reducer["memory reducers"]
     store -. "next storage substrate" .-> sema["persona-sema"]
     sema -.-> db[("mind.redb")]
-    dispatch --> reply["ReplySupervisorActor"]
+    dispatch --> reply["ReplySupervisor"]
 ```
 
 ## 1 · Component Surface
@@ -49,8 +47,8 @@ The crate exposes:
 - `MindEnvelope` — caller identity plus one `MindRequest`.
 - `MindRuntime` — in-process `kameo` facade used by tests and future CLI
   entry.
-- `actors::MindRootHandle` — root actor handle; the only bare
-  Kameo spawn site.
+- `MindRuntime` — domain wrapper over the root `ActorRef`; `MindRoot` is the
+  only bare Kameo spawn site.
 - `actors::ActorManifest` — topology witness naming root, long-lived
   supervisors, and trace-phase actors.
 - `actors::ActorTrace` — per-request witness proving which actor planes ran.
@@ -68,43 +66,43 @@ Phase 1 starts these supervised `kameo` actors:
 
 ```mermaid
 flowchart TB
-    root["MindRootActor"]
-    root --> config["ConfigActor"]
-    root --> ingress["IngressSupervisorActor"]
-    root --> dispatch["DispatchSupervisorActor"]
-    root --> domain["DomainSupervisorActor"]
-    root --> store["StoreSupervisorActor (mind state/write plane)"]
-    root --> views["ViewSupervisorActor"]
-    root --> subscriptions["SubscriptionSupervisorActor"]
-    root --> reply["ReplySupervisorActor"]
+    root["MindRoot"]
+    root --> config["Config"]
+    root --> ingress["IngressSupervisor"]
+    root --> dispatch["DispatchSupervisor"]
+    root --> domain["DomainSupervisor"]
+    root --> store["StoreSupervisor (mind state/write plane)"]
+    root --> views["ViewSupervisor"]
+    root --> subscriptions["SubscriptionSupervisor"]
+    root --> reply["ReplySupervisor"]
 
-    ingress --> request_session["RequestSessionActor trace phase"]
-    ingress --> identity["CallerIdentityActor trace phase"]
-    ingress --> envelope["EnvelopeActor trace phase"]
+    ingress --> request_session["RequestSession trace phase"]
+    ingress --> identity["CallerIdentityResolver trace phase"]
+    ingress --> envelope["EnvelopeBuilder trace phase"]
 
-    dispatch --> memory_flow["MemoryFlowActor trace phase"]
-    dispatch --> query_flow["QueryFlowActor trace phase"]
+    dispatch --> memory_flow["MemoryFlow trace phase"]
+    dispatch --> query_flow["QueryFlow trace phase"]
 
-    domain --> memory_graph["MemoryGraphSupervisorActor trace phase"]
-    memory_graph --> item_open["ItemOpenActor trace phase"]
-    memory_graph --> note_add["NoteAddActor trace phase"]
-    memory_graph --> link["LinkActor trace phase"]
-    memory_graph --> status["StatusChangeActor trace phase"]
-    memory_graph --> alias["AliasAddActor trace phase"]
+    domain --> memory_graph["MemoryGraphSupervisor trace phase"]
+    memory_graph --> item_open["ItemOpen trace phase"]
+    memory_graph --> note_add["NoteAdd trace phase"]
+    memory_graph --> link["Link trace phase"]
+    memory_graph --> status["StatusChange trace phase"]
+    memory_graph --> alias["AliasAdd trace phase"]
 
-    store --> read["SemaReadActor trace phase"]
-    store --> writer["SemaWriterActor trace phase"]
-    store --> id["IdMintActor trace phase"]
-    store --> clock["ClockActor trace phase"]
-    store --> append["EventAppendActor trace phase"]
-    store --> commit["CommitActor trace phase"]
+    store --> read["SemaReader trace phase"]
+    store --> writer["SemaWriter trace phase"]
+    store --> id["IdMint trace phase"]
+    store --> clock["Clock trace phase"]
+    store --> append["EventAppender trace phase"]
+    store --> commit["Commit trace phase"]
 
-    views --> ready["ReadyWorkViewActor trace phase"]
-    views --> blocked["BlockedWorkViewActor trace phase"]
-    views --> recent["RecentActivityViewActor trace phase"]
+    views --> ready["ReadyWorkView trace phase"]
+    views --> blocked["BlockedWorkView trace phase"]
+    views --> recent["RecentActivityView trace phase"]
 
-    reply --> encode["NotaReplyEncodeActor trace phase"]
-    reply --> error["ErrorShapeActor trace phase"]
+    reply --> encode["NotaReplyEncoder trace phase"]
+    reply --> error["ErrorShaper trace phase"]
 ```
 
 The long-lived supervisors are real actors today. The smaller operation planes
@@ -124,7 +122,7 @@ architecture witnesses. Keep them local until multiple real runtime crates
 duplicate the same concrete API.
 
 Kameo actors are data-bearing runtime nouns. Domain behavior belongs on those
-actor structs, reducers owned by those actor structs, or public handles.
+actor structs, reducers owned by those actor structs, or domain wrappers.
 
 ## 3 · Request Paths
 
@@ -133,12 +131,12 @@ plane, and reply:
 
 ```mermaid
 sequenceDiagram
-    participant Root as "MindRootActor"
-    participant Ingress as "IngressSupervisorActor"
-    participant Dispatch as "DispatchSupervisorActor"
-    participant Domain as "DomainSupervisorActor"
-    participant Store as "StoreSupervisorActor"
-    participant Reply as "ReplySupervisorActor"
+    participant Root as "MindRoot"
+    participant Ingress as "IngressSupervisor"
+    participant Dispatch as "DispatchSupervisor"
+    participant Domain as "DomainSupervisor"
+    participant Store as "StoreSupervisor"
+    participant Reply as "ReplySupervisor"
 
     Root->>Ingress: MindEnvelope
     Ingress->>Dispatch: identity-checked envelope
@@ -150,13 +148,13 @@ sequenceDiagram
     Reply-->>Root: typed reply plus ActorTrace
 ```
 
-Queries run through `ViewSupervisorActor` and `SemaReadActor` trace phases.
-The query trace must not include `SemaWriterActor`; `tests/actor_topology.rs`
+Queries run through `ViewSupervisor` and `SemaReader` trace phases.
+The query trace must not include `SemaWriter`; `tests/actor_topology.rs`
 asserts that ready-work query is read-only by actor path, not by convention.
 
 ## 4 · State and Ownership
 
-`StoreSupervisorActor` is the current internal name for the mind-owned
+`StoreSupervisor` is the current internal name for the mind-owned
 state/write plane. It is not a shared store component and does not imply a
 `persona-store` repo. It owns `MemoryState`, which owns a private graph
 reducer. The reducer appends typed `Event` values for memory/work mutations and
@@ -199,7 +197,7 @@ This repo does not own:
 - Mind-supplied identity, sequence, time, and operation context are
   infrastructure concerns; request payloads carry content, not authority.
 - The root actor is the only bare Kameo spawn site; children are supervised
-  from `MindRootActor`.
+  from `MindRoot`.
 - No shared `Arc<Mutex<T>>` state exists between actors.
 - Queries must not send write intents.
 - Every memory/work mutation appends a typed event.
@@ -216,7 +214,7 @@ src/error.rs               typed Error enum and actor call errors
 src/envelope.rs            MindEnvelope actor identity wrapper
 src/service.rs             MindRuntime in-process actor facade
 src/actors/mod.rs          actor module exports
-src/actors/root.rs         MindRootActor and MindRootHandle
+src/actors/root.rs         MindRoot
 src/actors/ingress.rs      ingress supervisor and envelope preparation trace
 src/actors/dispatch.rs     request classification and flow selection
 src/actors/domain.rs       memory mutation domain path

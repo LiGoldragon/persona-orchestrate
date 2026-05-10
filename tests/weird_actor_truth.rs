@@ -232,7 +232,7 @@ fn raw_actor_spawn_cannot_escape_mind_root() {
         .flat_map(|file| {
             file.violations_for(&ForbiddenFragment {
                 text: "Actor::spawn",
-                reason: "raw Kameo spawn outside MindRootActor",
+                reason: "raw Kameo spawn outside MindRoot",
             })
         })
         .collect::<Vec<_>>();
@@ -488,10 +488,10 @@ async fn unsupported_claim_cannot_use_success_reply_path_or_writer() {
         .await;
 
     assert!(response.reply().is_none());
-    assert!(response.trace().contains(ActorKind::ClaimFlowActor));
-    assert!(response.trace().contains(ActorKind::ErrorShapeActor));
-    assert!(!response.trace().contains(ActorKind::NotaReplyEncodeActor));
-    assert!(!response.trace().contains(ActorKind::SemaWriterActor));
+    assert!(response.trace().contains(ActorKind::ClaimFlow));
+    assert!(response.trace().contains(ActorKind::ErrorShaper));
+    assert!(!response.trace().contains(ActorKind::NotaReplyEncoder));
+    assert!(!response.trace().contains(ActorKind::SemaWriter));
 
     fixture.stop().await;
 }

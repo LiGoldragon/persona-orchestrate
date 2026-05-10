@@ -11,17 +11,17 @@ use super::reply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 use super::view;
 
-pub(super) struct DispatchSupervisorActor {
-    domain: ActorRef<domain::DomainSupervisorActor>,
-    view: ActorRef<view::ViewSupervisorActor>,
-    reply: ActorRef<reply::ReplySupervisorActor>,
+pub(super) struct DispatchSupervisor {
+    domain: ActorRef<domain::DomainSupervisor>,
+    view: ActorRef<view::ViewSupervisor>,
+    reply: ActorRef<reply::ReplySupervisor>,
 }
 
 #[derive(Clone)]
 pub(super) struct Arguments {
-    pub(super) domain: ActorRef<domain::DomainSupervisorActor>,
-    pub(super) view: ActorRef<view::ViewSupervisorActor>,
-    pub(super) reply: ActorRef<reply::ReplySupervisorActor>,
+    pub(super) domain: ActorRef<domain::DomainSupervisor>,
+    pub(super) view: ActorRef<view::ViewSupervisor>,
+    pub(super) reply: ActorRef<reply::ReplySupervisor>,
 }
 
 pub struct RouteEnvelope {
@@ -29,11 +29,11 @@ pub struct RouteEnvelope {
     pub trace: ActorTrace,
 }
 
-impl DispatchSupervisorActor {
+impl DispatchSupervisor {
     fn new(
-        domain: ActorRef<domain::DomainSupervisorActor>,
-        view: ActorRef<view::ViewSupervisorActor>,
-        reply: ActorRef<reply::ReplySupervisorActor>,
+        domain: ActorRef<domain::DomainSupervisor>,
+        view: ActorRef<view::ViewSupervisor>,
+        reply: ActorRef<reply::ReplySupervisor>,
     ) -> Self {
         Self {
             domain,
@@ -47,14 +47,8 @@ impl DispatchSupervisorActor {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
-        trace.record(
-            ActorKind::DispatchSupervisorActor,
-            TraceAction::MessageReceived,
-        );
-        trace.record(
-            ActorKind::RequestDispatchActor,
-            TraceAction::MessageReceived,
-        );
+        trace.record(ActorKind::DispatchSupervisor, TraceAction::MessageReceived);
+        trace.record(ActorKind::RequestDispatcher, TraceAction::MessageReceived);
 
         let pipeline = match envelope.request() {
             MindRequest::Open(_)
@@ -62,24 +56,22 @@ impl DispatchSupervisorActor {
             | MindRequest::Link(_)
             | MindRequest::ChangeStatus(_)
             | MindRequest::AddAlias(_) => {
-                trace.record(ActorKind::MemoryFlowActor, TraceAction::MessageReceived);
+                trace.record(ActorKind::MemoryFlow, TraceAction::MessageReceived);
                 self.apply_memory(envelope, trace).await?
             }
             MindRequest::Query(_) => {
-                trace.record(ActorKind::QueryFlowActor, TraceAction::MessageReceived);
+                trace.record(ActorKind::QueryFlow, TraceAction::MessageReceived);
                 self.read_memory(envelope, trace).await?
             }
-            MindRequest::RoleClaim(_) => {
-                self.unsupported(envelope, trace, ActorKind::ClaimFlowActor)
-            }
+            MindRequest::RoleClaim(_) => self.unsupported(envelope, trace, ActorKind::ClaimFlow),
             MindRequest::RoleHandoff(_) => {
-                self.unsupported(envelope, trace, ActorKind::HandoffFlowActor)
+                self.unsupported(envelope, trace, ActorKind::HandoffFlow)
             }
             MindRequest::ActivitySubmission(_) | MindRequest::ActivityQuery(_) => {
-                self.unsupported(envelope, trace, ActorKind::ActivityFlowActor)
+                self.unsupported(envelope, trace, ActorKind::ActivityFlow)
             }
             MindRequest::RoleRelease(_) | MindRequest::RoleObservation(_) => {
-                self.unsupported(envelope, trace, ActorKind::ClaimFlowActor)
+                self.unsupported(envelope, trace, ActorKind::ClaimFlow)
             }
         };
 
@@ -115,7 +107,7 @@ impl DispatchSupervisorActor {
         actor: ActorKind,
     ) -> PipelineReply {
         trace.record(actor, TraceAction::MessageReceived);
-        trace.record(ActorKind::ErrorShapeActor, TraceAction::MessageReplied);
+        trace.record(ActorKind::ErrorShaper, TraceAction::MessageReplied);
         PipelineReply::new(None, trace)
     }
 
@@ -130,7 +122,7 @@ impl DispatchSupervisorActor {
     }
 }
 
-impl Actor for DispatchSupervisorActor {
+impl Actor for DispatchSupervisor {
     type Args = Arguments;
     type Error = Infallible;
 
@@ -142,7 +134,7 @@ impl Actor for DispatchSupervisorActor {
     }
 }
 
-impl Message<RouteEnvelope> for DispatchSupervisorActor {
+impl Message<RouteEnvelope> for DispatchSupervisor {
     type Reply = PipelineReply;
 
     async fn handle(

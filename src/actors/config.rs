@@ -4,7 +4,7 @@ use kameo::message::{Context, Message};
 
 use crate::StoreLocation;
 
-pub(super) struct ConfigActor {
+pub(super) struct Config {
     store: StoreLocation,
 }
 
@@ -14,9 +14,28 @@ pub(super) struct Arguments {
 }
 
 #[allow(dead_code)]
-struct ReadStoreLocation;
+struct ReadStoreLocation {
+    probe: StoreLocationProbe,
+}
 
-impl ConfigActor {
+#[allow(dead_code)]
+impl ReadStoreLocation {
+    fn expecting(store: StoreLocation) -> Self {
+        Self {
+            probe: StoreLocationProbe {
+                expected: Some(store),
+            },
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Clone)]
+struct StoreLocationProbe {
+    expected: Option<StoreLocation>,
+}
+
+impl Config {
     fn new(store: StoreLocation) -> Self {
         Self { store }
     }
@@ -26,7 +45,7 @@ impl ConfigActor {
     }
 }
 
-impl Actor for ConfigActor {
+impl Actor for Config {
     type Args = Arguments;
     type Error = Infallible;
 
@@ -38,14 +57,18 @@ impl Actor for ConfigActor {
     }
 }
 
-impl Message<ReadStoreLocation> for ConfigActor {
+impl Message<ReadStoreLocation> for Config {
     type Reply = StoreLocation;
 
     async fn handle(
         &mut self,
-        _message: ReadStoreLocation,
+        message: ReadStoreLocation,
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
+        let _matches = match message.probe.expected.as_ref() {
+            Some(expected) => expected == self.store(),
+            None => true,
+        };
         self.store().clone()
     }
 }

@@ -8,13 +8,13 @@ use super::dispatch;
 use super::pipeline::PipelineReply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub(super) struct IngressSupervisorActor {
-    dispatch: ActorRef<dispatch::DispatchSupervisorActor>,
+pub(super) struct IngressSupervisor {
+    dispatch: ActorRef<dispatch::DispatchSupervisor>,
 }
 
 #[derive(Clone)]
 pub(super) struct Arguments {
-    pub(super) dispatch: ActorRef<dispatch::DispatchSupervisorActor>,
+    pub(super) dispatch: ActorRef<dispatch::DispatchSupervisor>,
 }
 
 pub struct AcceptEnvelope {
@@ -22,8 +22,8 @@ pub struct AcceptEnvelope {
     pub trace: ActorTrace,
 }
 
-impl IngressSupervisorActor {
-    fn new(dispatch: ActorRef<dispatch::DispatchSupervisorActor>) -> Self {
+impl IngressSupervisor {
+    fn new(dispatch: ActorRef<dispatch::DispatchSupervisor>) -> Self {
         Self { dispatch }
     }
 
@@ -32,14 +32,14 @@ impl IngressSupervisorActor {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
+        trace.record(ActorKind::IngressSupervisor, TraceAction::MessageReceived);
+        trace.record(ActorKind::RequestSession, TraceAction::MessageReceived);
+        trace.record(ActorKind::NotaDecoder, TraceAction::MessageReceived);
         trace.record(
-            ActorKind::IngressSupervisorActor,
+            ActorKind::CallerIdentityResolver,
             TraceAction::MessageReceived,
         );
-        trace.record(ActorKind::RequestSessionActor, TraceAction::MessageReceived);
-        trace.record(ActorKind::NotaDecodeActor, TraceAction::MessageReceived);
-        trace.record(ActorKind::CallerIdentityActor, TraceAction::MessageReceived);
-        trace.record(ActorKind::EnvelopeActor, TraceAction::MessageReplied);
+        trace.record(ActorKind::EnvelopeBuilder, TraceAction::MessageReplied);
 
         self.dispatch
             .ask(dispatch::RouteEnvelope { envelope, trace })
@@ -48,7 +48,7 @@ impl IngressSupervisorActor {
     }
 }
 
-impl Actor for IngressSupervisorActor {
+impl Actor for IngressSupervisor {
     type Args = Arguments;
     type Error = Infallible;
 
@@ -60,7 +60,7 @@ impl Actor for IngressSupervisorActor {
     }
 }
 
-impl Message<AcceptEnvelope> for IngressSupervisorActor {
+impl Message<AcceptEnvelope> for IngressSupervisor {
     type Reply = PipelineReply;
 
     async fn handle(

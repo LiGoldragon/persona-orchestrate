@@ -1,11 +1,14 @@
+use kameo::actor::ActorRef;
 use signal_persona_mind::MindReply;
 
-use crate::actors::root::{Arguments as RootArguments, RootReply};
-use crate::actors::{ActorManifest, ActorTrace, MindRootHandle};
+use crate::actors::root::{
+    Arguments as RootArguments, MindRoot, ReadManifest, RootReply, SubmitEnvelope,
+};
+use crate::actors::{ActorManifest, ActorTrace};
 use crate::{MindEnvelope, Result, StoreLocation};
 
 pub struct MindRuntime {
-    root: MindRootHandle,
+    root: ActorRef<MindRoot>,
 }
 
 #[derive(Debug)]
@@ -16,21 +19,28 @@ pub struct MindRuntimeReply {
 
 impl MindRuntime {
     pub async fn start(store: StoreLocation) -> Result<Self> {
-        let root = MindRootHandle::start(RootArguments::new(store)).await?;
+        let root = MindRoot::start(RootArguments::new(store)).await?;
         Ok(Self { root })
     }
 
     pub async fn submit(&self, envelope: MindEnvelope) -> Result<MindRuntimeReply> {
-        let reply = self.root.submit(envelope).await?;
+        let reply = self
+            .root
+            .ask(SubmitEnvelope { envelope })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))?;
         Ok(MindRuntimeReply::from_root_reply(reply))
     }
 
     pub async fn manifest(&self) -> Result<ActorManifest> {
-        self.root.manifest().await
+        self.root
+            .ask(ReadManifest::expecting_at_least(1))
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
     }
 
     pub async fn stop(self) -> Result<()> {
-        self.root.stop().await
+        MindRoot::stop(self.root).await
     }
 }
 

@@ -9,13 +9,13 @@ use super::pipeline::PipelineReply;
 use super::store;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub(super) struct DomainSupervisorActor {
-    store: ActorRef<store::StoreSupervisorActor>,
+pub(super) struct DomainSupervisor {
+    store: ActorRef<store::StoreSupervisor>,
 }
 
 #[derive(Clone)]
 pub(super) struct Arguments {
-    pub(super) store: ActorRef<store::StoreSupervisorActor>,
+    pub(super) store: ActorRef<store::StoreSupervisor>,
 }
 
 pub struct ApplyMemory {
@@ -23,8 +23,8 @@ pub struct ApplyMemory {
     pub trace: ActorTrace,
 }
 
-impl DomainSupervisorActor {
-    fn new(store: ActorRef<store::StoreSupervisorActor>) -> Self {
+impl DomainSupervisor {
+    fn new(store: ActorRef<store::StoreSupervisor>) -> Self {
         Self { store }
     }
 
@@ -33,12 +33,9 @@ impl DomainSupervisorActor {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
+        trace.record(ActorKind::DomainSupervisor, TraceAction::MessageReceived);
         trace.record(
-            ActorKind::DomainSupervisorActor,
-            TraceAction::MessageReceived,
-        );
-        trace.record(
-            ActorKind::MemoryGraphSupervisorActor,
+            ActorKind::MemoryGraphSupervisor,
             TraceAction::MessageReceived,
         );
         MemoryOperation::from_request(envelope.request()).record_into(&mut trace);
@@ -50,7 +47,7 @@ impl DomainSupervisorActor {
     }
 }
 
-impl Actor for DomainSupervisorActor {
+impl Actor for DomainSupervisor {
     type Args = Arguments;
     type Error = Infallible;
 
@@ -62,7 +59,7 @@ impl Actor for DomainSupervisorActor {
     }
 }
 
-impl Message<ApplyMemory> for DomainSupervisorActor {
+impl Message<ApplyMemory> for DomainSupervisor {
     type Reply = PipelineReply;
 
     async fn handle(
@@ -84,12 +81,12 @@ struct MemoryOperation {
 impl MemoryOperation {
     fn from_request(request: &MindRequest) -> Self {
         let actor = match request {
-            MindRequest::Open(_) => ActorKind::ItemOpenActor,
-            MindRequest::AddNote(_) => ActorKind::NoteAddActor,
-            MindRequest::Link(_) => ActorKind::LinkActor,
-            MindRequest::ChangeStatus(_) => ActorKind::StatusChangeActor,
-            MindRequest::AddAlias(_) => ActorKind::AliasAddActor,
-            _ => ActorKind::ErrorShapeActor,
+            MindRequest::Open(_) => ActorKind::ItemOpen,
+            MindRequest::AddNote(_) => ActorKind::NoteAdd,
+            MindRequest::Link(_) => ActorKind::Link,
+            MindRequest::ChangeStatus(_) => ActorKind::StatusChange,
+            MindRequest::AddAlias(_) => ActorKind::AliasAdd,
+            _ => ActorKind::ErrorShaper,
         };
         Self { actor }
     }

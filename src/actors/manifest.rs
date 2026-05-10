@@ -8,12 +8,12 @@ pub enum ActorResidency {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ManifestActor {
+pub struct ManifestEntry {
     kind: ActorKind,
     residency: ActorResidency,
 }
 
-impl ManifestActor {
+impl ManifestEntry {
     pub fn new(kind: ActorKind, residency: ActorResidency) -> Self {
         Self { kind, residency }
     }
@@ -49,7 +49,7 @@ impl ManifestEdge {
 
 #[derive(Debug, Clone, PartialEq, Eq, kameo::Reply)]
 pub struct ActorManifest {
-    actors: Vec<ManifestActor>,
+    actors: Vec<ManifestEntry>,
     edges: Vec<ManifestEdge>,
 }
 
@@ -60,180 +60,108 @@ impl ActorManifest {
         let trace_phase = ActorResidency::TracePhase;
 
         let actors = vec![
-            ManifestActor::new(ActorKind::MindRootActor, root),
-            ManifestActor::new(ActorKind::ConfigActor, long_lived),
-            ManifestActor::new(ActorKind::IngressSupervisorActor, long_lived),
-            ManifestActor::new(ActorKind::RequestSessionActor, trace_phase),
-            ManifestActor::new(ActorKind::NotaDecodeActor, trace_phase),
-            ManifestActor::new(ActorKind::CallerIdentityActor, trace_phase),
-            ManifestActor::new(ActorKind::EnvelopeActor, trace_phase),
-            ManifestActor::new(ActorKind::DispatchSupervisorActor, long_lived),
-            ManifestActor::new(ActorKind::RequestDispatchActor, trace_phase),
-            ManifestActor::new(ActorKind::ClaimFlowActor, trace_phase),
-            ManifestActor::new(ActorKind::HandoffFlowActor, trace_phase),
-            ManifestActor::new(ActorKind::ActivityFlowActor, trace_phase),
-            ManifestActor::new(ActorKind::MemoryFlowActor, trace_phase),
-            ManifestActor::new(ActorKind::QueryFlowActor, trace_phase),
-            ManifestActor::new(ActorKind::DomainSupervisorActor, long_lived),
-            ManifestActor::new(ActorKind::ClaimSupervisorActor, trace_phase),
-            ManifestActor::new(ActorKind::MemoryGraphSupervisorActor, trace_phase),
-            ManifestActor::new(ActorKind::QuerySupervisorActor, trace_phase),
-            ManifestActor::new(ActorKind::ItemOpenActor, trace_phase),
-            ManifestActor::new(ActorKind::NoteAddActor, trace_phase),
-            ManifestActor::new(ActorKind::LinkActor, trace_phase),
-            ManifestActor::new(ActorKind::StatusChangeActor, trace_phase),
-            ManifestActor::new(ActorKind::AliasAddActor, trace_phase),
-            ManifestActor::new(ActorKind::QueryPlanActor, trace_phase),
-            ManifestActor::new(ActorKind::GraphTraversalActor, trace_phase),
-            ManifestActor::new(ActorKind::QueryResultShapeActor, trace_phase),
-            ManifestActor::new(ActorKind::StoreSupervisorActor, long_lived),
-            ManifestActor::new(ActorKind::SemaWriterActor, trace_phase),
-            ManifestActor::new(ActorKind::SemaReadActor, trace_phase),
-            ManifestActor::new(ActorKind::IdMintActor, trace_phase),
-            ManifestActor::new(ActorKind::ClockActor, trace_phase),
-            ManifestActor::new(ActorKind::EventAppendActor, trace_phase),
-            ManifestActor::new(ActorKind::CommitActor, trace_phase),
-            ManifestActor::new(ActorKind::ViewSupervisorActor, long_lived),
-            ManifestActor::new(ActorKind::RoleSnapshotViewActor, trace_phase),
-            ManifestActor::new(ActorKind::ReadyWorkViewActor, trace_phase),
-            ManifestActor::new(ActorKind::BlockedWorkViewActor, trace_phase),
-            ManifestActor::new(ActorKind::RecentActivityViewActor, trace_phase),
-            ManifestActor::new(ActorKind::SubscriptionSupervisorActor, long_lived),
-            ManifestActor::new(ActorKind::CommitBusActor, trace_phase),
-            ManifestActor::new(ActorKind::SubscriberActor, trace_phase),
-            ManifestActor::new(ActorKind::ReplySupervisorActor, long_lived),
-            ManifestActor::new(ActorKind::NotaReplyEncodeActor, trace_phase),
-            ManifestActor::new(ActorKind::ErrorShapeActor, trace_phase),
+            ManifestEntry::new(ActorKind::MindRoot, root),
+            ManifestEntry::new(ActorKind::Config, long_lived),
+            ManifestEntry::new(ActorKind::IngressSupervisor, long_lived),
+            ManifestEntry::new(ActorKind::RequestSession, trace_phase),
+            ManifestEntry::new(ActorKind::NotaDecoder, trace_phase),
+            ManifestEntry::new(ActorKind::CallerIdentityResolver, trace_phase),
+            ManifestEntry::new(ActorKind::EnvelopeBuilder, trace_phase),
+            ManifestEntry::new(ActorKind::DispatchSupervisor, long_lived),
+            ManifestEntry::new(ActorKind::RequestDispatcher, trace_phase),
+            ManifestEntry::new(ActorKind::ClaimFlow, trace_phase),
+            ManifestEntry::new(ActorKind::HandoffFlow, trace_phase),
+            ManifestEntry::new(ActorKind::ActivityFlow, trace_phase),
+            ManifestEntry::new(ActorKind::MemoryFlow, trace_phase),
+            ManifestEntry::new(ActorKind::QueryFlow, trace_phase),
+            ManifestEntry::new(ActorKind::DomainSupervisor, long_lived),
+            ManifestEntry::new(ActorKind::ClaimSupervisor, trace_phase),
+            ManifestEntry::new(ActorKind::MemoryGraphSupervisor, trace_phase),
+            ManifestEntry::new(ActorKind::QuerySupervisor, trace_phase),
+            ManifestEntry::new(ActorKind::ItemOpen, trace_phase),
+            ManifestEntry::new(ActorKind::NoteAdd, trace_phase),
+            ManifestEntry::new(ActorKind::Link, trace_phase),
+            ManifestEntry::new(ActorKind::StatusChange, trace_phase),
+            ManifestEntry::new(ActorKind::AliasAdd, trace_phase),
+            ManifestEntry::new(ActorKind::QueryPlanner, trace_phase),
+            ManifestEntry::new(ActorKind::GraphTraversal, trace_phase),
+            ManifestEntry::new(ActorKind::QueryResultShaper, trace_phase),
+            ManifestEntry::new(ActorKind::StoreSupervisor, long_lived),
+            ManifestEntry::new(ActorKind::SemaWriter, trace_phase),
+            ManifestEntry::new(ActorKind::SemaReader, trace_phase),
+            ManifestEntry::new(ActorKind::IdMint, trace_phase),
+            ManifestEntry::new(ActorKind::Clock, trace_phase),
+            ManifestEntry::new(ActorKind::EventAppender, trace_phase),
+            ManifestEntry::new(ActorKind::Commit, trace_phase),
+            ManifestEntry::new(ActorKind::ViewSupervisor, long_lived),
+            ManifestEntry::new(ActorKind::RoleSnapshotView, trace_phase),
+            ManifestEntry::new(ActorKind::ReadyWorkView, trace_phase),
+            ManifestEntry::new(ActorKind::BlockedWorkView, trace_phase),
+            ManifestEntry::new(ActorKind::RecentActivityView, trace_phase),
+            ManifestEntry::new(ActorKind::SubscriptionSupervisor, long_lived),
+            ManifestEntry::new(ActorKind::CommitBus, trace_phase),
+            ManifestEntry::new(ActorKind::Subscriber, trace_phase),
+            ManifestEntry::new(ActorKind::ReplySupervisor, long_lived),
+            ManifestEntry::new(ActorKind::NotaReplyEncoder, trace_phase),
+            ManifestEntry::new(ActorKind::ErrorShaper, trace_phase),
         ];
 
         let edges = vec![
-            ManifestEdge::new(ActorKind::MindRootActor, ActorKind::ConfigActor),
-            ManifestEdge::new(ActorKind::MindRootActor, ActorKind::IngressSupervisorActor),
-            ManifestEdge::new(ActorKind::MindRootActor, ActorKind::DispatchSupervisorActor),
-            ManifestEdge::new(ActorKind::MindRootActor, ActorKind::DomainSupervisorActor),
-            ManifestEdge::new(ActorKind::MindRootActor, ActorKind::StoreSupervisorActor),
-            ManifestEdge::new(ActorKind::MindRootActor, ActorKind::ViewSupervisorActor),
+            ManifestEdge::new(ActorKind::MindRoot, ActorKind::Config),
+            ManifestEdge::new(ActorKind::MindRoot, ActorKind::IngressSupervisor),
+            ManifestEdge::new(ActorKind::MindRoot, ActorKind::DispatchSupervisor),
+            ManifestEdge::new(ActorKind::MindRoot, ActorKind::DomainSupervisor),
+            ManifestEdge::new(ActorKind::MindRoot, ActorKind::StoreSupervisor),
+            ManifestEdge::new(ActorKind::MindRoot, ActorKind::ViewSupervisor),
+            ManifestEdge::new(ActorKind::MindRoot, ActorKind::SubscriptionSupervisor),
+            ManifestEdge::new(ActorKind::MindRoot, ActorKind::ReplySupervisor),
+            ManifestEdge::new(ActorKind::IngressSupervisor, ActorKind::RequestSession),
+            ManifestEdge::new(ActorKind::IngressSupervisor, ActorKind::NotaDecoder),
             ManifestEdge::new(
-                ActorKind::MindRootActor,
-                ActorKind::SubscriptionSupervisorActor,
+                ActorKind::IngressSupervisor,
+                ActorKind::CallerIdentityResolver,
             ),
-            ManifestEdge::new(ActorKind::MindRootActor, ActorKind::ReplySupervisorActor),
+            ManifestEdge::new(ActorKind::IngressSupervisor, ActorKind::EnvelopeBuilder),
+            ManifestEdge::new(ActorKind::DispatchSupervisor, ActorKind::RequestDispatcher),
+            ManifestEdge::new(ActorKind::DispatchSupervisor, ActorKind::ClaimFlow),
+            ManifestEdge::new(ActorKind::DispatchSupervisor, ActorKind::HandoffFlow),
+            ManifestEdge::new(ActorKind::DispatchSupervisor, ActorKind::ActivityFlow),
+            ManifestEdge::new(ActorKind::DispatchSupervisor, ActorKind::MemoryFlow),
+            ManifestEdge::new(ActorKind::DispatchSupervisor, ActorKind::QueryFlow),
+            ManifestEdge::new(ActorKind::DomainSupervisor, ActorKind::ClaimSupervisor),
             ManifestEdge::new(
-                ActorKind::IngressSupervisorActor,
-                ActorKind::RequestSessionActor,
+                ActorKind::DomainSupervisor,
+                ActorKind::MemoryGraphSupervisor,
             ),
-            ManifestEdge::new(
-                ActorKind::IngressSupervisorActor,
-                ActorKind::NotaDecodeActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::IngressSupervisorActor,
-                ActorKind::CallerIdentityActor,
-            ),
-            ManifestEdge::new(ActorKind::IngressSupervisorActor, ActorKind::EnvelopeActor),
-            ManifestEdge::new(
-                ActorKind::DispatchSupervisorActor,
-                ActorKind::RequestDispatchActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::DispatchSupervisorActor,
-                ActorKind::ClaimFlowActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::DispatchSupervisorActor,
-                ActorKind::HandoffFlowActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::DispatchSupervisorActor,
-                ActorKind::ActivityFlowActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::DispatchSupervisorActor,
-                ActorKind::MemoryFlowActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::DispatchSupervisorActor,
-                ActorKind::QueryFlowActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::DomainSupervisorActor,
-                ActorKind::ClaimSupervisorActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::DomainSupervisorActor,
-                ActorKind::MemoryGraphSupervisorActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::DomainSupervisorActor,
-                ActorKind::QuerySupervisorActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::MemoryGraphSupervisorActor,
-                ActorKind::ItemOpenActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::MemoryGraphSupervisorActor,
-                ActorKind::NoteAddActor,
-            ),
-            ManifestEdge::new(ActorKind::MemoryGraphSupervisorActor, ActorKind::LinkActor),
-            ManifestEdge::new(
-                ActorKind::MemoryGraphSupervisorActor,
-                ActorKind::StatusChangeActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::MemoryGraphSupervisorActor,
-                ActorKind::AliasAddActor,
-            ),
-            ManifestEdge::new(ActorKind::QuerySupervisorActor, ActorKind::QueryPlanActor),
-            ManifestEdge::new(
-                ActorKind::QuerySupervisorActor,
-                ActorKind::GraphTraversalActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::QuerySupervisorActor,
-                ActorKind::QueryResultShapeActor,
-            ),
-            ManifestEdge::new(ActorKind::StoreSupervisorActor, ActorKind::SemaWriterActor),
-            ManifestEdge::new(ActorKind::StoreSupervisorActor, ActorKind::SemaReadActor),
-            ManifestEdge::new(ActorKind::StoreSupervisorActor, ActorKind::IdMintActor),
-            ManifestEdge::new(ActorKind::StoreSupervisorActor, ActorKind::ClockActor),
-            ManifestEdge::new(ActorKind::StoreSupervisorActor, ActorKind::EventAppendActor),
-            ManifestEdge::new(ActorKind::StoreSupervisorActor, ActorKind::CommitActor),
-            ManifestEdge::new(
-                ActorKind::ViewSupervisorActor,
-                ActorKind::RoleSnapshotViewActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::ViewSupervisorActor,
-                ActorKind::ReadyWorkViewActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::ViewSupervisorActor,
-                ActorKind::BlockedWorkViewActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::ViewSupervisorActor,
-                ActorKind::RecentActivityViewActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::SubscriptionSupervisorActor,
-                ActorKind::CommitBusActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::SubscriptionSupervisorActor,
-                ActorKind::SubscriberActor,
-            ),
-            ManifestEdge::new(
-                ActorKind::ReplySupervisorActor,
-                ActorKind::NotaReplyEncodeActor,
-            ),
-            ManifestEdge::new(ActorKind::ReplySupervisorActor, ActorKind::ErrorShapeActor),
+            ManifestEdge::new(ActorKind::DomainSupervisor, ActorKind::QuerySupervisor),
+            ManifestEdge::new(ActorKind::MemoryGraphSupervisor, ActorKind::ItemOpen),
+            ManifestEdge::new(ActorKind::MemoryGraphSupervisor, ActorKind::NoteAdd),
+            ManifestEdge::new(ActorKind::MemoryGraphSupervisor, ActorKind::Link),
+            ManifestEdge::new(ActorKind::MemoryGraphSupervisor, ActorKind::StatusChange),
+            ManifestEdge::new(ActorKind::MemoryGraphSupervisor, ActorKind::AliasAdd),
+            ManifestEdge::new(ActorKind::QuerySupervisor, ActorKind::QueryPlanner),
+            ManifestEdge::new(ActorKind::QuerySupervisor, ActorKind::GraphTraversal),
+            ManifestEdge::new(ActorKind::QuerySupervisor, ActorKind::QueryResultShaper),
+            ManifestEdge::new(ActorKind::StoreSupervisor, ActorKind::SemaWriter),
+            ManifestEdge::new(ActorKind::StoreSupervisor, ActorKind::SemaReader),
+            ManifestEdge::new(ActorKind::StoreSupervisor, ActorKind::IdMint),
+            ManifestEdge::new(ActorKind::StoreSupervisor, ActorKind::Clock),
+            ManifestEdge::new(ActorKind::StoreSupervisor, ActorKind::EventAppender),
+            ManifestEdge::new(ActorKind::StoreSupervisor, ActorKind::Commit),
+            ManifestEdge::new(ActorKind::ViewSupervisor, ActorKind::RoleSnapshotView),
+            ManifestEdge::new(ActorKind::ViewSupervisor, ActorKind::ReadyWorkView),
+            ManifestEdge::new(ActorKind::ViewSupervisor, ActorKind::BlockedWorkView),
+            ManifestEdge::new(ActorKind::ViewSupervisor, ActorKind::RecentActivityView),
+            ManifestEdge::new(ActorKind::SubscriptionSupervisor, ActorKind::CommitBus),
+            ManifestEdge::new(ActorKind::SubscriptionSupervisor, ActorKind::Subscriber),
+            ManifestEdge::new(ActorKind::ReplySupervisor, ActorKind::NotaReplyEncoder),
+            ManifestEdge::new(ActorKind::ReplySupervisor, ActorKind::ErrorShaper),
         ];
 
         Self { actors, edges }
     }
 
-    pub fn actors(&self) -> &[ManifestActor] {
+    pub fn actors(&self) -> &[ManifestEntry] {
         &self.actors
     }
 

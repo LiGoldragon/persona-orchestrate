@@ -8,7 +8,7 @@ use crate::{MemoryState, MindEnvelope, StoreLocation};
 use super::pipeline::PipelineReply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub(super) struct StoreSupervisorActor {
+pub(super) struct StoreSupervisor {
     memory: MemoryState,
 }
 
@@ -27,7 +27,7 @@ pub struct ReadMemory {
     pub trace: ActorTrace,
 }
 
-impl StoreSupervisorActor {
+impl StoreSupervisor {
     fn new(store: StoreLocation) -> Self {
         Self {
             memory: MemoryState::open(store),
@@ -35,25 +35,19 @@ impl StoreSupervisorActor {
     }
 
     fn apply_memory(&self, envelope: MindEnvelope, mut trace: ActorTrace) -> PipelineReply {
-        trace.record(
-            ActorKind::StoreSupervisorActor,
-            TraceAction::MessageReceived,
-        );
+        trace.record(ActorKind::StoreSupervisor, TraceAction::MessageReceived);
         WriteTrace::from_request(envelope.request()).record_into(&mut trace);
 
         let reply = self.memory.dispatch_envelope(envelope);
 
-        trace.record(ActorKind::EventAppendActor, TraceAction::MessageReceived);
-        trace.record(ActorKind::CommitActor, TraceAction::CommitCompleted);
+        trace.record(ActorKind::EventAppender, TraceAction::MessageReceived);
+        trace.record(ActorKind::Commit, TraceAction::CommitCompleted);
         PipelineReply::new(reply, trace)
     }
 
     fn read_memory(&self, envelope: MindEnvelope, mut trace: ActorTrace) -> PipelineReply {
-        trace.record(
-            ActorKind::StoreSupervisorActor,
-            TraceAction::MessageReceived,
-        );
-        trace.record(ActorKind::SemaReadActor, TraceAction::MessageReceived);
+        trace.record(ActorKind::StoreSupervisor, TraceAction::MessageReceived);
+        trace.record(ActorKind::SemaReader, TraceAction::MessageReceived);
 
         let reply = self.memory.dispatch_envelope(envelope);
 
@@ -61,7 +55,7 @@ impl StoreSupervisorActor {
     }
 }
 
-impl Actor for StoreSupervisorActor {
+impl Actor for StoreSupervisor {
     type Args = Arguments;
     type Error = Infallible;
 
@@ -73,7 +67,7 @@ impl Actor for StoreSupervisorActor {
     }
 }
 
-impl Message<ApplyMemory> for StoreSupervisorActor {
+impl Message<ApplyMemory> for StoreSupervisor {
     type Reply = PipelineReply;
 
     async fn handle(
@@ -85,7 +79,7 @@ impl Message<ApplyMemory> for StoreSupervisorActor {
     }
 }
 
-impl Message<ReadMemory> for StoreSupervisorActor {
+impl Message<ReadMemory> for StoreSupervisor {
     type Reply = PipelineReply;
 
     async fn handle(
@@ -125,12 +119,12 @@ impl WriteTrace {
 
     fn record_into(&self, trace: &mut ActorTrace) {
         if self.reads_existing_graph {
-            trace.record(ActorKind::SemaReadActor, TraceAction::MessageReceived);
+            trace.record(ActorKind::SemaReader, TraceAction::MessageReceived);
         }
         if self.mints_identity {
-            trace.record(ActorKind::IdMintActor, TraceAction::MessageReceived);
+            trace.record(ActorKind::IdMint, TraceAction::MessageReceived);
         }
-        trace.record(ActorKind::ClockActor, TraceAction::MessageReceived);
-        trace.record(ActorKind::SemaWriterActor, TraceAction::WriteIntentSent);
+        trace.record(ActorKind::Clock, TraceAction::MessageReceived);
+        trace.record(ActorKind::SemaWriter, TraceAction::WriteIntentSent);
     }
 }

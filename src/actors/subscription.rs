@@ -4,7 +4,7 @@ use kameo::message::{Context, Message};
 
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub(super) struct SubscriptionSupervisorActor {
+pub(super) struct SubscriptionSupervisor {
     post_commit_count: u64,
 }
 
@@ -18,7 +18,7 @@ pub struct PublishPostCommit {
     pub trace: ActorTrace,
 }
 
-impl SubscriptionSupervisorActor {
+impl SubscriptionSupervisor {
     fn new(arguments: Arguments) -> Self {
         Self {
             post_commit_count: arguments.post_commit_count,
@@ -26,7 +26,7 @@ impl SubscriptionSupervisorActor {
     }
 }
 
-impl Actor for SubscriptionSupervisorActor {
+impl Actor for SubscriptionSupervisor {
     type Args = Arguments;
     type Error = Infallible;
 
@@ -38,7 +38,7 @@ impl Actor for SubscriptionSupervisorActor {
     }
 }
 
-impl Message<PublishPostCommit> for SubscriptionSupervisorActor {
+impl Message<PublishPostCommit> for SubscriptionSupervisor {
     type Reply = ActorTrace;
 
     async fn handle(
@@ -49,10 +49,10 @@ impl Message<PublishPostCommit> for SubscriptionSupervisorActor {
         self.post_commit_count += 1;
         let mut trace = message.trace;
         trace.record(
-            ActorKind::SubscriptionSupervisorActor,
+            ActorKind::SubscriptionSupervisor,
             TraceAction::MessageReceived,
         );
-        trace.record(ActorKind::CommitBusActor, TraceAction::MessageReceived);
+        trace.record(ActorKind::CommitBus, TraceAction::MessageReceived);
         trace
     }
 }

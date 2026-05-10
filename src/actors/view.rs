@@ -9,13 +9,13 @@ use super::pipeline::PipelineReply;
 use super::store;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub(super) struct ViewSupervisorActor {
-    store: ActorRef<store::StoreSupervisorActor>,
+pub(super) struct ViewSupervisor {
+    store: ActorRef<store::StoreSupervisor>,
 }
 
 #[derive(Clone)]
 pub(super) struct Arguments {
-    pub(super) store: ActorRef<store::StoreSupervisorActor>,
+    pub(super) store: ActorRef<store::StoreSupervisor>,
 }
 
 pub struct ReadMemory {
@@ -23,8 +23,8 @@ pub struct ReadMemory {
     pub trace: ActorTrace,
 }
 
-impl ViewSupervisorActor {
-    fn new(store: ActorRef<store::StoreSupervisorActor>) -> Self {
+impl ViewSupervisor {
+    fn new(store: ActorRef<store::StoreSupervisor>) -> Self {
         Self { store }
     }
 
@@ -33,29 +33,25 @@ impl ViewSupervisorActor {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
-        trace.record(ActorKind::ViewSupervisorActor, TraceAction::MessageReceived);
-        trace.record(
-            ActorKind::QuerySupervisorActor,
-            TraceAction::MessageReceived,
-        );
-        trace.record(ActorKind::QueryPlanActor, TraceAction::MessageReceived);
+        trace.record(ActorKind::ViewSupervisor, TraceAction::MessageReceived);
+        trace.record(ActorKind::QuerySupervisor, TraceAction::MessageReceived);
+        trace.record(ActorKind::QueryPlanner, TraceAction::MessageReceived);
         QueryOperation::from_request(envelope.request()).record_into(&mut trace);
-        trace.record(ActorKind::GraphTraversalActor, TraceAction::MessageReceived);
+        trace.record(ActorKind::GraphTraversal, TraceAction::MessageReceived);
 
         let mut reply = self
             .store
             .ask(store::ReadMemory { envelope, trace })
             .await
             .map_err(|error| crate::Error::ActorCall(error.to_string()))?;
-        reply.trace.record(
-            ActorKind::QueryResultShapeActor,
-            TraceAction::MessageReceived,
-        );
+        reply
+            .trace
+            .record(ActorKind::QueryResultShaper, TraceAction::MessageReceived);
         Ok(reply)
     }
 }
 
-impl Actor for ViewSupervisorActor {
+impl Actor for ViewSupervisor {
     type Args = Arguments;
     type Error = Infallible;
 
@@ -67,7 +63,7 @@ impl Actor for ViewSupervisorActor {
     }
 }
 
-impl Message<ReadMemory> for ViewSupervisorActor {
+impl Message<ReadMemory> for ViewSupervisor {
     type Reply = PipelineReply;
 
     async fn handle(
@@ -90,16 +86,16 @@ impl QueryOperation {
     fn from_request(request: &MindRequest) -> Self {
         let actor = match request {
             MindRequest::Query(query) => match &query.kind {
-                QueryKind::Ready => ActorKind::ReadyWorkViewActor,
-                QueryKind::Blocked => ActorKind::BlockedWorkViewActor,
-                QueryKind::RecentEvents => ActorKind::RecentActivityViewActor,
+                QueryKind::Ready => ActorKind::ReadyWorkView,
+                QueryKind::Blocked => ActorKind::BlockedWorkView,
+                QueryKind::RecentEvents => ActorKind::RecentActivityView,
                 QueryKind::Open
                 | QueryKind::ByItem(_)
                 | QueryKind::ByKind(_)
                 | QueryKind::ByStatus(_)
-                | QueryKind::ByAlias(_) => ActorKind::GraphTraversalActor,
+                | QueryKind::ByAlias(_) => ActorKind::GraphTraversal,
             },
-            _ => ActorKind::ErrorShapeActor,
+            _ => ActorKind::ErrorShaper,
         };
         Self { actor }
     }

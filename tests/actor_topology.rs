@@ -41,31 +41,28 @@ fn topology_manifest_names_required_actor_planes() {
     let manifest = ActorManifest::persona_mind_phase_one();
 
     for actor in [
-        ActorKind::MindRootActor,
-        ActorKind::ConfigActor,
-        ActorKind::IngressSupervisorActor,
-        ActorKind::DispatchSupervisorActor,
-        ActorKind::DomainSupervisorActor,
-        ActorKind::StoreSupervisorActor,
-        ActorKind::ViewSupervisorActor,
-        ActorKind::SubscriptionSupervisorActor,
-        ActorKind::ReplySupervisorActor,
-        ActorKind::SemaWriterActor,
-        ActorKind::SemaReadActor,
-        ActorKind::IdMintActor,
-        ActorKind::ReadyWorkViewActor,
-        ActorKind::NotaReplyEncodeActor,
+        ActorKind::MindRoot,
+        ActorKind::Config,
+        ActorKind::IngressSupervisor,
+        ActorKind::DispatchSupervisor,
+        ActorKind::DomainSupervisor,
+        ActorKind::StoreSupervisor,
+        ActorKind::ViewSupervisor,
+        ActorKind::SubscriptionSupervisor,
+        ActorKind::ReplySupervisor,
+        ActorKind::SemaWriter,
+        ActorKind::SemaReader,
+        ActorKind::IdMint,
+        ActorKind::ReadyWorkView,
+        ActorKind::NotaReplyEncoder,
     ] {
         assert!(manifest.contains(actor), "missing {}", actor.label());
     }
 
     assert_eq!(manifest.actor_count_for(ActorResidency::Root), 1);
     assert!(manifest.actor_count_for(ActorResidency::LongLived) >= 8);
-    assert!(manifest.contains_edge(ActorKind::MindRootActor, ActorKind::StoreSupervisorActor));
-    assert!(manifest.contains_edge(
-        ActorKind::ReplySupervisorActor,
-        ActorKind::NotaReplyEncodeActor
-    ));
+    assert!(manifest.contains_edge(ActorKind::MindRoot, ActorKind::StoreSupervisor));
+    assert!(manifest.contains_edge(ActorKind::ReplySupervisor, ActorKind::NotaReplyEncoder));
 }
 
 #[tokio::test]
@@ -89,27 +86,27 @@ async fn open_item_runs_through_kameo_write_path() {
         ActorName::new("operator-assistant")
     );
     assert!(response.trace().contains_ordered(&[
-        ActorKind::MindRootActor,
-        ActorKind::IngressSupervisorActor,
-        ActorKind::DispatchSupervisorActor,
-        ActorKind::MemoryFlowActor,
-        ActorKind::DomainSupervisorActor,
-        ActorKind::ItemOpenActor,
-        ActorKind::StoreSupervisorActor,
-        ActorKind::SemaWriterActor,
-        ActorKind::CommitActor,
-        ActorKind::ReplySupervisorActor,
-        ActorKind::MindRootActor,
+        ActorKind::MindRoot,
+        ActorKind::IngressSupervisor,
+        ActorKind::DispatchSupervisor,
+        ActorKind::MemoryFlow,
+        ActorKind::DomainSupervisor,
+        ActorKind::ItemOpen,
+        ActorKind::StoreSupervisor,
+        ActorKind::SemaWriter,
+        ActorKind::Commit,
+        ActorKind::ReplySupervisor,
+        ActorKind::MindRoot,
     ]));
     assert!(
         response
             .trace()
-            .contains_action(ActorKind::SemaWriterActor, TraceAction::WriteIntentSent)
+            .contains_action(ActorKind::SemaWriter, TraceAction::WriteIntentSent)
     );
     assert!(
         response
             .trace()
-            .contains_action(ActorKind::CommitActor, TraceAction::CommitCompleted)
+            .contains_action(ActorKind::Commit, TraceAction::CommitCompleted)
     );
 
     fixture.stop().await;
@@ -140,19 +137,19 @@ async fn query_path_uses_read_actor_without_writer() {
 
     assert_eq!(view.items.len(), 1);
     assert!(response.trace().contains_ordered(&[
-        ActorKind::MindRootActor,
-        ActorKind::IngressSupervisorActor,
-        ActorKind::DispatchSupervisorActor,
-        ActorKind::QueryFlowActor,
-        ActorKind::ViewSupervisorActor,
-        ActorKind::ReadyWorkViewActor,
-        ActorKind::StoreSupervisorActor,
-        ActorKind::SemaReadActor,
-        ActorKind::QueryResultShapeActor,
-        ActorKind::ReplySupervisorActor,
+        ActorKind::MindRoot,
+        ActorKind::IngressSupervisor,
+        ActorKind::DispatchSupervisor,
+        ActorKind::QueryFlow,
+        ActorKind::ViewSupervisor,
+        ActorKind::ReadyWorkView,
+        ActorKind::StoreSupervisor,
+        ActorKind::SemaReader,
+        ActorKind::QueryResultShaper,
+        ActorKind::ReplySupervisor,
     ]));
-    assert!(response.trace().contains(ActorKind::SemaReadActor));
-    assert!(!response.trace().contains(ActorKind::SemaWriterActor));
+    assert!(response.trace().contains(ActorKind::SemaReader));
+    assert!(!response.trace().contains(ActorKind::SemaWriter));
 
     fixture.stop().await;
 }
