@@ -10,7 +10,7 @@ use super::reply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 use super::view;
 
-pub struct DispatchSupervisor;
+pub(super) struct DispatchSupervisor;
 
 pub struct State {
     domain: ActorRef<domain::Message>,

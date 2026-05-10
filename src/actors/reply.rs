@@ -4,11 +4,11 @@ use signal_persona_mind::MindReply;
 use super::pipeline::PipelineReply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub struct ReplySupervisor;
+pub(super) struct ReplySupervisor;
 
-pub struct State;
+pub(super) struct State;
 
-pub struct Arguments;
+pub(super) struct Arguments;
 
 pub enum Message {
     Shape {

@@ -2,11 +2,11 @@ use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub struct SubscriptionSupervisor;
+pub(super) struct SubscriptionSupervisor;
 
-pub struct State;
+pub(super) struct State;
 
-pub struct Arguments;
+pub(super) struct Arguments;
 
 #[allow(dead_code)]
 pub enum Message {

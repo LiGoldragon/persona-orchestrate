@@ -7,7 +7,7 @@ use super::dispatch;
 use super::pipeline::PipelineReply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub struct IngressSupervisor;
+pub(super) struct IngressSupervisor;
 
 pub struct State {
     dispatch: ActorRef<dispatch::Message>,

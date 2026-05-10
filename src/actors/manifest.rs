@@ -137,6 +137,18 @@ impl ActorManifest {
             ),
             ManifestEdge::new(
                 ActorKind::DispatchSupervisorActor,
+                ActorKind::ClaimFlowActor,
+            ),
+            ManifestEdge::new(
+                ActorKind::DispatchSupervisorActor,
+                ActorKind::HandoffFlowActor,
+            ),
+            ManifestEdge::new(
+                ActorKind::DispatchSupervisorActor,
+                ActorKind::ActivityFlowActor,
+            ),
+            ManifestEdge::new(
+                ActorKind::DispatchSupervisorActor,
                 ActorKind::MemoryFlowActor,
             ),
             ManifestEdge::new(
@@ -145,7 +157,41 @@ impl ActorManifest {
             ),
             ManifestEdge::new(
                 ActorKind::DomainSupervisorActor,
+                ActorKind::ClaimSupervisorActor,
+            ),
+            ManifestEdge::new(
+                ActorKind::DomainSupervisorActor,
                 ActorKind::MemoryGraphSupervisorActor,
+            ),
+            ManifestEdge::new(
+                ActorKind::DomainSupervisorActor,
+                ActorKind::QuerySupervisorActor,
+            ),
+            ManifestEdge::new(
+                ActorKind::MemoryGraphSupervisorActor,
+                ActorKind::ItemOpenActor,
+            ),
+            ManifestEdge::new(
+                ActorKind::MemoryGraphSupervisorActor,
+                ActorKind::NoteAddActor,
+            ),
+            ManifestEdge::new(ActorKind::MemoryGraphSupervisorActor, ActorKind::LinkActor),
+            ManifestEdge::new(
+                ActorKind::MemoryGraphSupervisorActor,
+                ActorKind::StatusChangeActor,
+            ),
+            ManifestEdge::new(
+                ActorKind::MemoryGraphSupervisorActor,
+                ActorKind::AliasAddActor,
+            ),
+            ManifestEdge::new(ActorKind::QuerySupervisorActor, ActorKind::QueryPlanActor),
+            ManifestEdge::new(
+                ActorKind::QuerySupervisorActor,
+                ActorKind::GraphTraversalActor,
+            ),
+            ManifestEdge::new(
+                ActorKind::QuerySupervisorActor,
+                ActorKind::QueryResultShapeActor,
             ),
             ManifestEdge::new(ActorKind::StoreSupervisorActor, ActorKind::SemaWriterActor),
             ManifestEdge::new(ActorKind::StoreSupervisorActor, ActorKind::SemaReadActor),
@@ -153,6 +199,10 @@ impl ActorManifest {
             ManifestEdge::new(ActorKind::StoreSupervisorActor, ActorKind::ClockActor),
             ManifestEdge::new(ActorKind::StoreSupervisorActor, ActorKind::EventAppendActor),
             ManifestEdge::new(ActorKind::StoreSupervisorActor, ActorKind::CommitActor),
+            ManifestEdge::new(
+                ActorKind::ViewSupervisorActor,
+                ActorKind::RoleSnapshotViewActor,
+            ),
             ManifestEdge::new(
                 ActorKind::ViewSupervisorActor,
                 ActorKind::ReadyWorkViewActor,

@@ -8,7 +8,7 @@ use super::pipeline::PipelineReply;
 use super::store;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub struct ViewSupervisor;
+pub(super) struct ViewSupervisor;
 
 pub struct State {
     store: ActorRef<store::Message>,

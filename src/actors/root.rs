@@ -10,7 +10,7 @@ use super::manifest::ActorManifest;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 use super::{config, dispatch, domain, ingress, reply, store, subscription, view};
 
-pub struct MindRoot;
+struct MindRoot;
 
 pub struct State {
     ingress: ActorRef<ingress::Message>,

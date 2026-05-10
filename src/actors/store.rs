@@ -6,7 +6,7 @@ use crate::{MemoryState, MindEnvelope, StoreLocation};
 use super::pipeline::PipelineReply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub struct StoreSupervisor;
+pub(super) struct StoreSupervisor;
 
 pub struct State {
     memory: MemoryState,

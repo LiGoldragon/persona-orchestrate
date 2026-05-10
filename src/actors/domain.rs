@@ -8,7 +8,7 @@ use super::pipeline::PipelineReply;
 use super::store;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub struct DomainSupervisor;
+pub(super) struct DomainSupervisor;
 
 pub struct State {
     store: ActorRef<store::Message>,

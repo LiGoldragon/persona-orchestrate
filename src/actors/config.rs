@@ -2,7 +2,7 @@ use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 
 use crate::StoreLocation;
 
-pub struct Config;
+pub(super) struct Config;
 
 pub struct State {
     store: StoreLocation,

@@ -210,6 +210,7 @@ src/memory.rs              memory/work graph reducer
 src/role.rs                local role value
 src/main.rs                scaffold CLI
 tests/actor_topology.rs    manifest and actor-path truth tests
+tests/weird_actor_truth.rs static actor-discipline and weird runtime tests
 tests/memory.rs            memory/work reducer tests
 tests/smoke.rs             claim reducer tests
 ```
