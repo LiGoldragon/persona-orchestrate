@@ -600,7 +600,7 @@ fn actor_kind_labels_cannot_collide() {
 }
 
 #[tokio::test]
-async fn unsupported_claim_cannot_use_success_reply_path_or_writer() {
+async fn role_claim_cannot_bypass_claim_flow_or_writer() {
     let fixture = ActorRuntimeFixture::new(ActorName::new("operator-assistant")).await;
     let response = fixture
         .submit(MindRequest::RoleClaim(RoleClaim {
@@ -614,11 +614,12 @@ async fn unsupported_claim_cannot_use_success_reply_path_or_writer() {
         }))
         .await;
 
-    assert!(response.reply().is_none());
+    assert!(response.reply().is_some());
     assert!(response.trace().contains(ActorKind::ClaimFlow));
-    assert!(response.trace().contains(ActorKind::ErrorShaper));
-    assert!(!response.trace().contains(ActorKind::NotaReplyEncoder));
-    assert!(!response.trace().contains(ActorKind::SemaWriter));
+    assert!(response.trace().contains(ActorKind::ClaimSupervisor));
+    assert!(response.trace().contains(ActorKind::SemaWriter));
+    assert!(response.trace().contains(ActorKind::Commit));
+    assert!(response.trace().contains(ActorKind::NotaReplyEncoder));
 
     fixture.stop().await;
 }

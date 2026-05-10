@@ -3,13 +3,14 @@ use kameo::error::Infallible;
 use kameo::message::{Context, Message};
 use signal_persona_mind::MindRequest;
 
-use crate::{MemoryState, MindEnvelope, StoreLocation};
+use crate::{ClaimLedger, MemoryState, MindEnvelope, StoreLocation};
 
 use super::pipeline::PipelineReply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
 pub(super) struct StoreSupervisor {
     memory: MemoryState,
+    claims: ClaimLedger,
 }
 
 #[derive(Clone)]
@@ -27,10 +28,21 @@ pub struct ReadMemory {
     pub trace: ActorTrace,
 }
 
+pub struct ApplyClaim {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
+pub struct ReadClaims {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
 impl StoreSupervisor {
     fn new(store: StoreLocation) -> Self {
         Self {
             memory: MemoryState::open(store),
+            claims: ClaimLedger::open(),
         }
     }
 
@@ -50,6 +62,34 @@ impl StoreSupervisor {
         trace.record(ActorKind::SemaReader, TraceAction::MessageReceived);
 
         let reply = self.memory.dispatch_envelope(envelope);
+
+        PipelineReply::new(reply, trace)
+    }
+
+    fn apply_claim(&mut self, envelope: MindEnvelope, mut trace: ActorTrace) -> PipelineReply {
+        trace.record(ActorKind::StoreSupervisor, TraceAction::MessageReceived);
+        trace.record(ActorKind::SemaReader, TraceAction::MessageReceived);
+        trace.record(ActorKind::SemaWriter, TraceAction::WriteIntentSent);
+
+        let reply = match envelope.request().clone() {
+            MindRequest::RoleClaim(claim) => Some(self.claims.apply_claim(claim)),
+            MindRequest::RoleRelease(release) => Some(self.claims.apply_release(release)),
+            _ => None,
+        };
+
+        trace.record(ActorKind::EventAppender, TraceAction::MessageReceived);
+        trace.record(ActorKind::Commit, TraceAction::CommitCompleted);
+        PipelineReply::new(reply, trace)
+    }
+
+    fn read_claims(&self, envelope: MindEnvelope, mut trace: ActorTrace) -> PipelineReply {
+        trace.record(ActorKind::StoreSupervisor, TraceAction::MessageReceived);
+        trace.record(ActorKind::SemaReader, TraceAction::MessageReceived);
+
+        let reply = match envelope.request().clone() {
+            MindRequest::RoleObservation(observation) => Some(self.claims.observe(observation)),
+            _ => None,
+        };
 
         PipelineReply::new(reply, trace)
     }
@@ -88,6 +128,30 @@ impl Message<ReadMemory> for StoreSupervisor {
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         self.read_memory(message.envelope, message.trace)
+    }
+}
+
+impl Message<ApplyClaim> for StoreSupervisor {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: ApplyClaim,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.apply_claim(message.envelope, message.trace)
+    }
+}
+
+impl Message<ReadClaims> for StoreSupervisor {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: ReadClaims,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.read_claims(message.envelope, message.trace)
     }
 }
 

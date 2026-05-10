@@ -63,15 +63,19 @@ impl DispatchPhase {
                 trace.record(ActorKind::QueryFlow, TraceAction::MessageReceived);
                 self.read_memory(envelope, trace).await?
             }
-            MindRequest::RoleClaim(_) => self.unsupported(envelope, trace, ActorKind::ClaimFlow),
+            MindRequest::RoleClaim(_) | MindRequest::RoleRelease(_) => {
+                trace.record(ActorKind::ClaimFlow, TraceAction::MessageReceived);
+                self.apply_claim(envelope, trace).await?
+            }
+            MindRequest::RoleObservation(_) => {
+                trace.record(ActorKind::ClaimFlow, TraceAction::MessageReceived);
+                self.read_claims(envelope, trace).await?
+            }
             MindRequest::RoleHandoff(_) => {
                 self.unsupported(envelope, trace, ActorKind::HandoffFlow)
             }
             MindRequest::ActivitySubmission(_) | MindRequest::ActivityQuery(_) => {
                 self.unsupported(envelope, trace, ActorKind::ActivityFlow)
-            }
-            MindRequest::RoleRelease(_) | MindRequest::RoleObservation(_) => {
-                self.unsupported(envelope, trace, ActorKind::ClaimFlow)
             }
         };
 
@@ -96,6 +100,28 @@ impl DispatchPhase {
     ) -> CrateResult<PipelineReply> {
         self.view
             .ask(view::ReadMemory { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn apply_claim(
+        &self,
+        envelope: MindEnvelope,
+        trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        self.domain
+            .ask(domain::ApplyClaim { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn read_claims(
+        &self,
+        envelope: MindEnvelope,
+        trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        self.view
+            .ask(view::ReadClaims { envelope, trace })
             .await
             .map_err(|error| crate::Error::ActorCall(error.to_string()))
     }

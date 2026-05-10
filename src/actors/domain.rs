@@ -23,6 +23,11 @@ pub struct ApplyMemory {
     pub trace: ActorTrace,
 }
 
+pub struct ApplyClaim {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
 impl DomainPhase {
     fn new(store: ActorRef<store::StoreSupervisor>) -> Self {
         Self { store }
@@ -42,6 +47,20 @@ impl DomainPhase {
 
         self.store
             .ask(store::ApplyMemory { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn apply_claim(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        trace.record(ActorKind::DomainPhase, TraceAction::MessageReceived);
+        trace.record(ActorKind::ClaimSupervisor, TraceAction::MessageReceived);
+
+        self.store
+            .ask(store::ApplyClaim { envelope, trace })
             .await
             .map_err(|error| crate::Error::ActorCall(error.to_string()))
     }
@@ -68,6 +87,21 @@ impl Message<ApplyMemory> for DomainPhase {
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         match self.apply_memory(message.envelope, message.trace).await {
+            Ok(reply) => reply,
+            Err(_error) => PipelineReply::new(None, ActorTrace::new()),
+        }
+    }
+}
+
+impl Message<ApplyClaim> for DomainPhase {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: ApplyClaim,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        match self.apply_claim(message.envelope, message.trace).await {
             Ok(reply) => reply,
             Err(_error) => PipelineReply::new(None, ActorTrace::new()),
         }

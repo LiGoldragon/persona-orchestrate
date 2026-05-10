@@ -23,6 +23,11 @@ pub struct ReadMemory {
     pub trace: ActorTrace,
 }
 
+pub struct ReadClaims {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
 impl ViewPhase {
     fn new(store: ActorRef<store::StoreSupervisor>) -> Self {
         Self { store }
@@ -49,6 +54,20 @@ impl ViewPhase {
             .record(ActorKind::QueryResultShaper, TraceAction::MessageReceived);
         Ok(reply)
     }
+
+    async fn read_claims(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        trace.record(ActorKind::ViewPhase, TraceAction::MessageReceived);
+        trace.record(ActorKind::RoleSnapshotView, TraceAction::MessageReceived);
+
+        self.store
+            .ask(store::ReadClaims { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
 }
 
 impl Actor for ViewPhase {
@@ -72,6 +91,21 @@ impl Message<ReadMemory> for ViewPhase {
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         match self.read_memory(message.envelope, message.trace).await {
+            Ok(reply) => reply,
+            Err(_error) => PipelineReply::new(None, ActorTrace::new()),
+        }
+    }
+}
+
+impl Message<ReadClaims> for ViewPhase {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: ReadClaims,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        match self.read_claims(message.envelope, message.trace).await {
             Ok(reply) => reply,
             Err(_error) => PipelineReply::new(None, ActorTrace::new()),
         }

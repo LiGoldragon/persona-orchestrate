@@ -9,7 +9,7 @@ pub mod transport;
 pub use actors::root::{
     Arguments as MindRootArguments, MindRoot, RootReply as MindRootReply, SubmitEnvelope,
 };
-pub use claim::{ClaimScope, ClaimState};
+pub use claim::{ClaimLedger, ClaimScope, ClaimState};
 pub use envelope::MindEnvelope;
 pub use error::{Error, Result};
 pub use kameo::actor::ActorRef;
