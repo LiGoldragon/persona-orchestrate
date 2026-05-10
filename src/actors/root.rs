@@ -5,13 +5,11 @@ use signal_persona_mind::MindReply;
 
 use crate::{Error, MindEnvelope, Result, StoreLocation};
 
-use super::manifest::ActorManifest;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 use super::{config, dispatch, domain, ingress, reply, store, subscription, view};
 
-pub(crate) struct MindRoot {
+pub struct MindRoot {
     ingress: ActorRef<ingress::IngressPhase>,
-    manifest: ActorManifest,
 }
 
 pub struct Arguments {
@@ -26,23 +24,6 @@ impl Arguments {
 
 pub struct SubmitEnvelope {
     pub envelope: MindEnvelope,
-}
-
-pub(crate) struct ReadManifest {
-    probe: ManifestProbe,
-}
-
-impl ReadManifest {
-    pub(crate) fn expecting_at_least(minimum_actors: usize) -> Self {
-        Self {
-            probe: ManifestProbe { minimum_actors },
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ManifestProbe {
-    minimum_actors: usize,
 }
 
 #[derive(Debug, kameo::Reply)]
@@ -66,17 +47,17 @@ impl RootReply {
 }
 
 impl MindRoot {
-    fn new(ingress: ActorRef<ingress::IngressPhase>, manifest: ActorManifest) -> Self {
-        Self { ingress, manifest }
+    fn new(ingress: ActorRef<ingress::IngressPhase>) -> Self {
+        Self { ingress }
     }
 
-    pub(crate) async fn start(arguments: Arguments) -> Result<ActorRef<Self>> {
+    pub async fn start(arguments: Arguments) -> Result<ActorRef<Self>> {
         let actor_reference = Self::spawn(arguments);
         actor_reference.wait_for_startup().await;
         Ok(actor_reference)
     }
 
-    pub(crate) async fn stop(actor_reference: ActorRef<Self>) -> Result<()> {
+    pub async fn stop(actor_reference: ActorRef<Self>) -> Result<()> {
         actor_reference
             .stop_gracefully()
             .await
@@ -110,8 +91,6 @@ impl Actor for MindRoot {
         arguments: Self::Args,
         actor_reference: ActorRef<Self>,
     ) -> std::result::Result<Self, Self::Error> {
-        let manifest = ActorManifest::persona_mind_phase_one();
-
         let _config = config::Config::supervise(
             &actor_reference,
             config::Arguments {
@@ -176,7 +155,7 @@ impl Actor for MindRoot {
                 .spawn()
                 .await;
 
-        Ok(Self::new(ingress, manifest))
+        Ok(Self::new(ingress))
     }
 }
 
@@ -197,18 +176,5 @@ impl Message<SubmitEnvelope> for MindRoot {
                 RootReply::new(None, trace)
             }
         }
-    }
-}
-
-impl Message<ReadManifest> for MindRoot {
-    type Reply = ActorManifest;
-
-    async fn handle(
-        &mut self,
-        message: ReadManifest,
-        _context: &mut Context<Self, Self::Reply>,
-    ) -> Self::Reply {
-        let _satisfied = self.manifest.actors().len() >= message.probe.minimum_actors;
-        self.manifest.clone()
     }
 }

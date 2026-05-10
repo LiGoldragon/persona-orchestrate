@@ -1,21 +1,24 @@
 use persona_mind::actors::{ActorKind, ActorManifest, ActorResidency, TraceAction};
-use persona_mind::{MindEnvelope, MindRuntime, StoreLocation};
+use persona_mind::{
+    ActorRef, MindEnvelope, MindRoot, MindRootArguments, MindRootReply, StoreLocation,
+    SubmitEnvelope,
+};
 use signal_persona_mind::{
     ActorName, ItemKind, ItemPriority, MindReply, MindRequest, Opening, Query, QueryKind,
     QueryLimit, TextBody, Title,
 };
 
 struct ActorFixture {
-    runtime: MindRuntime,
+    root: ActorRef<MindRoot>,
     actor: ActorName,
 }
 
 impl ActorFixture {
     async fn new() -> Self {
         Self {
-            runtime: MindRuntime::start(StoreLocation::new("mind.redb"))
+            root: MindRoot::start(MindRootArguments::new(StoreLocation::new("mind.redb")))
                 .await
-                .expect("kameo runtime starts"),
+                .expect("mind root starts"),
             actor: ActorName::new("operator-assistant"),
         }
     }
@@ -24,15 +27,17 @@ impl ActorFixture {
         MindEnvelope::new(self.actor.clone(), request)
     }
 
-    async fn submit(&self, request: MindRequest) -> persona_mind::MindRuntimeReply {
-        self.runtime
-            .submit(self.envelope(request))
+    async fn submit(&self, request: MindRequest) -> MindRootReply {
+        self.root
+            .ask(SubmitEnvelope {
+                envelope: self.envelope(request),
+            })
             .await
             .expect("actor request succeeds")
     }
 
     async fn stop(self) {
-        self.runtime.stop().await.expect("kameo runtime stops");
+        MindRoot::stop(self.root).await.expect("mind root stops");
     }
 }
 

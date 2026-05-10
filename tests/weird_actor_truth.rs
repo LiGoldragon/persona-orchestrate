@@ -3,7 +3,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use persona_mind::actors::{ActorKind, ActorManifest, ActorResidency};
-use persona_mind::{MindEnvelope, MindRuntime, StoreLocation};
+use persona_mind::{
+    ActorRef, MindEnvelope, MindRoot, MindRootArguments, MindRootReply, StoreLocation,
+    SubmitEnvelope,
+};
 use signal_persona_mind::{
     ActorName, ItemKind, ItemPriority, MindReply, MindRequest, Opening, Query, QueryKind,
     QueryLimit, RoleClaim, RoleName, ScopeReason, ScopeReference, TextBody, Title, WirePath,
@@ -40,7 +43,7 @@ struct SourceViolation {
 }
 
 struct ActorRuntimeFixture {
-    runtime: MindRuntime,
+    root: ActorRef<MindRoot>,
     actor: ActorName,
 }
 
@@ -206,9 +209,9 @@ impl SourceViolation {
 impl ActorRuntimeFixture {
     async fn new(actor: ActorName) -> Self {
         Self {
-            runtime: MindRuntime::start(StoreLocation::new("mind.redb"))
+            root: MindRoot::start(MindRootArguments::new(StoreLocation::new("mind.redb")))
                 .await
-                .expect("kameo runtime starts"),
+                .expect("mind root starts"),
             actor,
         }
     }
@@ -217,15 +220,17 @@ impl ActorRuntimeFixture {
         MindEnvelope::new(self.actor.clone(), request)
     }
 
-    async fn submit(&self, request: MindRequest) -> persona_mind::MindRuntimeReply {
-        self.runtime
-            .submit(self.envelope(request))
+    async fn submit(&self, request: MindRequest) -> MindRootReply {
+        self.root
+            .ask(SubmitEnvelope {
+                envelope: self.envelope(request),
+            })
             .await
             .expect("actor request succeeds")
     }
 
     async fn stop(self) {
-        self.runtime.stop().await.expect("kameo runtime stops");
+        MindRoot::stop(self.root).await.expect("mind root stops");
     }
 }
 
@@ -454,7 +459,7 @@ fn mind_cli_cannot_open_the_mind_database() {
             reason: "CLI must not open the database kernel",
         },
         ForbiddenFragment {
-            text: "MindRuntime::start",
+            text: "MindRoot::start",
             reason: "CLI must not own the root actor runtime",
         },
     ];

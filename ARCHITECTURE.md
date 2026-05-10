@@ -26,11 +26,11 @@ command language. It decodes NOTA into `MindRequest`, resolves caller identity,
 wraps the request in a Signal frame, sends that frame to a long-lived
 `persona-mind` daemon, and prints the daemon's NOTA `MindReply`.
 
-The daemon owns `MindRoot` for its process lifetime. `MindRuntime` is the
-current in-process facade used by tests and early scaffolding; the production
-shape is daemon-owned root plus thin CLI clients. Request phases that currently
-exist as trace witnesses become real actors when they own state, IO, failure,
-identity, time, IDs, or transaction ordering.
+The daemon owns `MindRoot` for its process lifetime. Tests and early
+scaffolding use `ActorRef<MindRoot>` directly; there is no separate in-process
+runtime facade. Request phases that currently exist as trace witnesses become
+real actors when they own state, IO, failure, identity, time, IDs, or
+transaction ordering.
 
 ```mermaid
 graph LR
@@ -56,8 +56,8 @@ The crate exposes:
 | Surface | Purpose |
 |---|---|
 | `MindEnvelope` | Infrastructure-supplied caller identity plus one `MindRequest`. |
-| `MindRuntime` | Current in-process Kameo facade for tests and daemon scaffolding. |
-| `MindRuntimeReply` | Typed reply plus actor trace witness. |
+| `ActorRef<MindRoot>` | Direct Kameo root actor surface for in-process tests and daemon scaffolding. |
+| `MindRootReply` | Typed reply plus actor trace witness. |
 | `MemoryState` | Current in-memory work/memory reducer used behind the actor path. |
 | `ClaimState` | Current in-memory claim reducer used by claim-scope tests. |
 | `actors::ActorManifest` | Runtime topology witness. |
@@ -357,7 +357,6 @@ constraints:
 src/lib.rs                 crate surface
 src/error.rs               typed Error enum and actor call errors
 src/envelope.rs            MindEnvelope actor identity wrapper
-src/service.rs             MindRuntime in-process actor facade and daemon scaffold input
 src/actors/mod.rs          actor module exports
 src/actors/root.rs         MindRoot
 src/actors/ingress.rs      ingress supervisor and envelope preparation trace
