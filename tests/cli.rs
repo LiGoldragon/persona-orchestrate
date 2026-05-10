@@ -116,10 +116,10 @@ fn nota_query_text_maps_to_signal_request() {
 
 #[test]
 fn nota_work_mutation_text_maps_to_signal_requests() {
-    let item_id = "item-0000000000000001";
+    let item_display = "aab";
 
     let note = persona_mind::MindTextRequest::from_nota(&format!(
-        "(NoteSubmission (Stable {item_id}) \"note body\")"
+        "(NoteSubmission (Display {item_display}) \"note body\")"
     ))
     .expect("note text decodes")
     .into_request()
@@ -130,11 +130,13 @@ fn nota_work_mutation_text_maps_to_signal_requests() {
     };
     assert_eq!(
         note.item,
-        signal_persona_mind::ItemReference::Stable(signal_persona_mind::StableItemId::new(item_id))
+        signal_persona_mind::ItemReference::Display(signal_persona_mind::DisplayId::new(
+            item_display
+        ))
     );
 
     let link = persona_mind::MindTextRequest::from_nota(&format!(
-        "(Link (Stable {item_id}) References (Report \"reports/operator/105-command-line-mind-architecture-survey.md\") None)"
+        "(Link (Display {item_display}) References (Report \"reports/operator/105-command-line-mind-architecture-survey.md\") None)"
     ))
     .expect("link text decodes")
     .into_request()
@@ -146,7 +148,7 @@ fn nota_work_mutation_text_maps_to_signal_requests() {
     assert_eq!(link.kind, signal_persona_mind::EdgeKind::References);
 
     let status = persona_mind::MindTextRequest::from_nota(&format!(
-        "(StatusChange (Stable {item_id}) InProgress \"started\")"
+        "(StatusChange (Display {item_display}) InProgress \"started\")"
     ))
     .expect("status text decodes")
     .into_request()
@@ -158,7 +160,7 @@ fn nota_work_mutation_text_maps_to_signal_requests() {
     assert_eq!(status.status, signal_persona_mind::ItemStatus::InProgress);
 
     let alias = persona_mind::MindTextRequest::from_nota(&format!(
-        "(AliasAssignment (Stable {item_id}) primary-test)"
+        "(AliasAssignment (Display {item_display}) primary-test)"
     ))
     .expect("alias text decodes")
     .into_request()
@@ -357,7 +359,7 @@ async fn mind_cli_mutates_work_item_through_daemon() {
     let endpoint = daemon.endpoint().clone();
     let server = tokio::spawn(async move { daemon.serve_count(6).await });
     let socket = endpoint.as_path().to_str().expect("socket path utf8");
-    let item_id = "item-0000000000000001";
+    let item_display = "aab";
 
     let mut opening_output = Vec::new();
     MindCommand::from_arguments([
@@ -377,7 +379,7 @@ async fn mind_cli_mutates_work_item_through_daemon() {
         socket,
         "--actor",
         "designer",
-        &format!("(NoteSubmission (Stable {item_id}) \"designer note\")"),
+        &format!("(NoteSubmission (Display {item_display}) \"designer note\")"),
     ])
     .run(&mut note_output)
     .await
@@ -389,7 +391,7 @@ async fn mind_cli_mutates_work_item_through_daemon() {
         socket,
         "--actor",
         "operator",
-        &format!("(AliasAssignment (Stable {item_id}) primary-mind-text)"),
+        &format!("(AliasAssignment (Display {item_display}) primary-mind-text)"),
     ])
     .run(&mut alias_output)
     .await
@@ -402,7 +404,7 @@ async fn mind_cli_mutates_work_item_through_daemon() {
         "--actor",
         "operator",
         &format!(
-            "(Link (Stable {item_id}) References (Report \"reports/operator/105-command-line-mind-architecture-survey.md\") \"source report\")"
+            "(Link (Display {item_display}) References (Report \"reports/operator/105-command-line-mind-architecture-survey.md\") \"source report\")"
         ),
     ])
     .run(&mut link_output)
@@ -415,7 +417,7 @@ async fn mind_cli_mutates_work_item_through_daemon() {
         socket,
         "--actor",
         "operator",
-        &format!("(StatusChange (Stable {item_id}) InProgress \"implementation started\")"),
+        &format!("(StatusChange (Display {item_display}) InProgress \"implementation started\")"),
     ])
     .run(&mut status_output)
     .await
@@ -427,7 +429,7 @@ async fn mind_cli_mutates_work_item_through_daemon() {
         socket,
         "--actor",
         "operator",
-        &format!("(Query (ByItem (Stable {item_id})) 20)"),
+        &format!("(Query (ByItem (Display {item_display})) 20)"),
     ])
     .run(&mut query_output)
     .await

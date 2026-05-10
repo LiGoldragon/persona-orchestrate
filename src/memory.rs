@@ -118,10 +118,11 @@ impl MemoryGraph {
 
     fn open(&mut self, opening: Opening, actor: &ActorName) -> MindReply {
         self.next_item += 1;
+        let id = ShortIdMint::new(self.next_item);
         let header = self.next_header(actor);
         let item = Item {
-            id: StableItemId::new(format!("item-{:016x}", self.next_item)),
-            display_id: DisplayIdMint::new(self.next_item).into_display_id(),
+            id: id.stable_item_id(),
+            display_id: id.display_id(),
             aliases: Vec::new(),
             kind: opening.kind,
             status: ItemStatus::Open,
@@ -414,7 +415,7 @@ impl MemoryGraph {
         self.next_operation += 1;
         EventHeader {
             event: EventSeq::new(self.next_event),
-            operation: OperationId::new(format!("op-{:016x}", self.next_operation)),
+            operation: ShortIdMint::new(self.next_operation).operation_id(),
             actor: actor.clone(),
         }
     }
@@ -469,19 +470,31 @@ impl<'reply> MemoryReply<'reply> {
     }
 }
 
-struct DisplayIdMint {
+struct ShortIdMint {
     value: u64,
 }
 
-impl DisplayIdMint {
+impl ShortIdMint {
     fn new(value: u64) -> Self {
         Self { value }
     }
 
-    fn into_display_id(self) -> DisplayId {
-        let alphabet = b"0123456789abcdefghjkmnpqrstvwxyz";
+    fn stable_item_id(&self) -> StableItemId {
+        StableItemId::new(self.token())
+    }
+
+    fn operation_id(&self) -> OperationId {
+        OperationId::new(self.token())
+    }
+
+    fn display_id(&self) -> DisplayId {
+        DisplayId::new(self.token())
+    }
+
+    fn token(&self) -> String {
+        let alphabet = b"abcdefghjkmnpqrstvwxyz23456789";
         let mut value = self.value;
-        let mut text = [b'0'; 5];
+        let mut text = [b'a'; 3];
 
         for slot in text.iter_mut().rev() {
             let index = (value % 32) as usize;
@@ -489,7 +502,7 @@ impl DisplayIdMint {
             value /= 32;
         }
 
-        DisplayId::new(String::from_utf8(text.to_vec()).expect("display ids are ascii"))
+        String::from_utf8(text.to_vec()).expect("short ids are ascii")
     }
 }
 
