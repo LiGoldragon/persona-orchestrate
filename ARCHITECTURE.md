@@ -110,6 +110,20 @@ are trace-phase actors in Phase 1: they are explicit manifest entries and test
 witnesses, and their boundaries are the names that future fine-grained ractor
 actors must preserve as persistence lands.
 
+### 2.1 · Actor Framework Boundary
+
+`persona-mind` uses `ractor` directly. No second actor abstraction is required
+before persistence work proceeds.
+
+The local `actors::manifest` and `actors::trace` modules are persona-mind
+architecture witnesses. Keep them local until multiple real runtime crates
+duplicate the same concrete API.
+
+Raw ractor splits behavior markers from mutable `State`. Treat that as
+framework mechanics. Keep marker types private or crate-private where possible;
+domain behavior belongs on data-bearing state, reducers owned by that state, or
+public handles.
+
 ## 3 · Request Paths
 
 Memory mutations run through ingress, dispatch, domain, store, and reply:
@@ -185,6 +199,8 @@ This repo does not own:
 - Every memory/work mutation appends a typed event.
 - BEADS is transitional import/history only, never an exclusive lock model.
 - Lock files are not durable truth for this crate.
+- Production code uses direct `ractor`; no second actor abstraction is a
+  dependency or prerequisite.
 
 ## Code Map
 
@@ -220,7 +236,8 @@ tests/smoke.rs             claim reducer tests
 - `~/primary/reports/operator/101-persona-mind-full-architecture-proposal.md`
   — full actor-heavy target architecture.
 - `~/primary/reports/operator/102-actor-heavy-persona-mind-research.md`
-  — actor-system research and ractor recommendation.
+  — actor-system research. Its direct-ractor recommendation remains current;
+  extra abstraction-layer speculation is not persona-mind architecture.
 - `~/primary/reports/designer/100-persona-mind-architecture-proposal.md`
   — concrete ID, envelope, database-path, and table-key decisions.
 - `../signal-persona-mind/ARCHITECTURE.md` — request/reply contract.

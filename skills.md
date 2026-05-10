@@ -2,7 +2,7 @@
 
 Work here when the change concerns Persona's central typed state: roles,
 claims, handoff tasks, activity, memory/work items, notes, dependencies,
-aliases, ready-work projections, lock projections, or the `mind` CLI.
+aliases, ready-work views, compatibility lock state, or the `mind` CLI.
 
 Rules for work here:
 
@@ -15,5 +15,7 @@ Rules for work here:
   that database; no shared cross-component DB.
 - Memory/work mutations append typed events; item state and ready-work lists are
   projections.
-- Lock files are projections for human and cross-harness visibility,
-  regenerated from the typed records on commit.
+- Lock files are compatibility artifacts while the workspace migrates; they are
+  not durable truth and should not be regenerated as the long-term interface.
+- Runtime actors use direct `ractor`; do not add a second actor abstraction as a
+  prerequisite for mind work.
