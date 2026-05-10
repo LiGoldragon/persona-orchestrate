@@ -6,12 +6,9 @@ command-line mind.*
 > Status: the crate has a real Kameo runtime, mind-local Sema tables for
 > durable role claims, activity records, and a typed work-graph snapshot over
 > mind-local Sema, plus a Unix-socket Signal-frame daemon/client transport
-> around `MindRoot`. The
-> `mind` binary can run a daemon and submit NOTA role
-> claim/release/handoff/observation, activity submission/query, and first
-> work-graph opening/query requests through that daemon. Full text coverage for
-> work-graph mutation replies beyond opening is the next foundational
-> implementation wave.
+> around `MindRoot`. The `mind` binary can run a daemon and submit NOTA role
+> claim/release/handoff/observation, activity submission/query, and work-graph
+> opening/note/link/status/alias/query requests through that daemon.
 
 ---
 
@@ -72,7 +69,7 @@ The crate exposes:
 | `MindClient` | Thin local client that attaches Signal auth, submits one request frame, and reads one reply frame. |
 | `MindDaemon` | Bound one-shot daemon harness around `MindRoot`; reads actor identity from Signal auth before entering the root actor. |
 | `MindCommand` | Process-boundary command parser for daemon mode and one NOTA request submission. |
-| `MindTextRequest` / `MindTextReply` | Current NOTA projection for role coordination, activity, and opening/query work-graph requests and replies. |
+| `MindTextRequest` / `MindTextReply` | Current NOTA projection for role coordination, activity, and work-graph request/reply records. |
 | `mind` binary | Daemon-backed command-line mind for the implemented role-state slice. |
 
 The public protocol is not defined here. `signal-persona-mind` owns the
@@ -84,8 +81,7 @@ state transitions.
 The command-line mind is a thin client boundary over a long-lived daemon. The
 daemon owns the runtime path. The current crate has a Unix-socket daemon,
 Signal-frame transport, and a NOTA projection for role coordination, activity,
-and first work-graph opening/query operations. Full text coverage for every
-`signal-persona-mind` request/reply is not implemented yet.
+and work-graph operations.
 
 Command-line interfaces in this workspace interact with daemons. The
 command-line mind is not a one-shot state owner and should not reopen that
@@ -316,10 +312,9 @@ This repo does not own:
   NOTA reply record.
 - The `mind` CLI sends Signal frames to the long-lived `persona-mind` daemon;
   it does not own `MindRoot`.
-- The `mind` CLI currently supports role claim/release/handoff/observation,
-  activity submission/query, and work-graph opening/query text records;
-  unsupported text records fail at the text boundary instead of inventing a
-  second command language.
+- The `mind` CLI supports role claim/release/handoff/observation, activity
+  submission/query, and work-graph opening/note/link/status/alias/query text
+  records.
 - `MindClient` sends one length-prefixed Signal request frame to the daemon and
   expects one length-prefixed Signal reply frame back.
 - `MindClient` supplies caller identity through Signal auth, not through the
@@ -383,6 +378,7 @@ constraints:
 | `mind_cli_sends_nota_role_claim_to_daemon` | CLI text enters the daemon path, not an in-process shortcut. |
 | `mind_cli_reads_role_observation_without_lock_files` | observation comes from mind state, not lock-file projection. |
 | `mind_cli_opens_and_queries_work_item_through_daemon` | work-graph text crosses the daemon path and returns typed NOTA replies. |
+| `mind_cli_mutates_work_item_through_daemon` | note/link/status/alias work-graph mutations cross the daemon path and return typed NOTA receipts. |
 | `role_claim_reaches_claim_flow_and_commits` | claim requests are not routed to unsupported. |
 | `conflicting_claim_returns_typed_rejection` | conflicts are data. |
 | `role_observation_reads_claims_without_writer` | role observation is a read path. |

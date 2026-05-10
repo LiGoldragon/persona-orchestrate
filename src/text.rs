@@ -1,7 +1,7 @@
 use nota_codec::{Decoder, Encoder, NotaDecode, NotaEncode, NotaEnum, NotaRecord};
 use signal_persona_mind as contract;
 
-use crate::{Error, Result};
+use crate::Result;
 
 #[derive(NotaEnum, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RoleNameText {
@@ -160,6 +160,18 @@ impl EdgeKindText {
             contract::EdgeKind::Supersedes => Self::Supersedes,
             contract::EdgeKind::Answers => Self::Answers,
             contract::EdgeKind::References => Self::References,
+        }
+    }
+
+    fn into_contract(self) -> contract::EdgeKind {
+        match self {
+            Self::DependsOn => contract::EdgeKind::DependsOn,
+            Self::ParentOf => contract::EdgeKind::ParentOf,
+            Self::RelatesTo => contract::EdgeKind::RelatesTo,
+            Self::Duplicates => contract::EdgeKind::Duplicates,
+            Self::Supersedes => contract::EdgeKind::Supersedes,
+            Self::Answers => contract::EdgeKind::Answers,
+            Self::References => contract::EdgeKind::References,
         }
     }
 }
@@ -454,6 +466,158 @@ impl ItemReferenceText {
     }
 }
 
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct ItemReferenceTarget {
+    pub item: ItemReferenceText,
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct Report {
+    pub path: String,
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct GitCommit {
+    pub hash: String,
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct BeadsTask {
+    pub token: String,
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct File {
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinkTargetText {
+    ItemReferenceTarget(ItemReferenceTarget),
+    Report(Report),
+    GitCommit(GitCommit),
+    BeadsTask(BeadsTask),
+    File(File),
+}
+
+impl LinkTargetText {
+    fn into_contract(self) -> contract::LinkTarget {
+        match self {
+            Self::ItemReferenceTarget(target) => {
+                contract::LinkTarget::Item(target.item.into_contract())
+            }
+            Self::Report(report) => contract::LinkTarget::External(
+                contract::ExternalReference::Report(contract::ReportPath::new(report.path)),
+            ),
+            Self::GitCommit(commit) => contract::LinkTarget::External(
+                contract::ExternalReference::GitCommit(contract::CommitHash::new(commit.hash)),
+            ),
+            Self::BeadsTask(task) => contract::LinkTarget::External(
+                contract::ExternalReference::BeadsTask(contract::BeadsToken::new(task.token)),
+            ),
+            Self::File(file) => contract::LinkTarget::External(contract::ExternalReference::File(
+                contract::ReferencePath::new(file.path),
+            )),
+        }
+    }
+}
+
+impl NotaEncode for LinkTargetText {
+    fn encode(&self, encoder: &mut Encoder) -> nota_codec::Result<()> {
+        match self {
+            Self::ItemReferenceTarget(target) => target.encode(encoder),
+            Self::Report(report) => report.encode(encoder),
+            Self::GitCommit(commit) => commit.encode(encoder),
+            Self::BeadsTask(task) => task.encode(encoder),
+            Self::File(file) => file.encode(encoder),
+        }
+    }
+}
+
+impl NotaDecode for LinkTargetText {
+    fn decode(decoder: &mut Decoder<'_>) -> nota_codec::Result<Self> {
+        match decoder.peek_record_head()?.as_str() {
+            "ItemReferenceTarget" => Ok(Self::ItemReferenceTarget(ItemReferenceTarget::decode(
+                decoder,
+            )?)),
+            "Report" => Ok(Self::Report(Report::decode(decoder)?)),
+            "GitCommit" => Ok(Self::GitCommit(GitCommit::decode(decoder)?)),
+            "BeadsTask" => Ok(Self::BeadsTask(BeadsTask::decode(decoder)?)),
+            "File" => Ok(Self::File(File::decode(decoder)?)),
+            other => Err(nota_codec::Error::UnknownKindForVerb {
+                verb: "LinkTarget",
+                got: other.to_string(),
+            }),
+        }
+    }
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct NoteSubmission {
+    pub item: ItemReferenceText,
+    pub body: String,
+}
+
+impl NoteSubmission {
+    fn into_contract(self) -> contract::MindRequest {
+        contract::MindRequest::NoteSubmission(contract::NoteSubmission {
+            item: self.item.into_contract(),
+            body: contract::TextBody::new(self.body),
+        })
+    }
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct Link {
+    pub source: ItemReferenceText,
+    pub kind: EdgeKindText,
+    pub target: LinkTargetText,
+    pub body: Option<String>,
+}
+
+impl Link {
+    fn into_contract(self) -> contract::MindRequest {
+        contract::MindRequest::Link(contract::Link {
+            source: self.source.into_contract(),
+            kind: self.kind.into_contract(),
+            target: self.target.into_contract(),
+            body: self.body.map(contract::TextBody::new),
+        })
+    }
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct StatusChange {
+    pub item: ItemReferenceText,
+    pub status: ItemStatusText,
+    pub body: Option<String>,
+}
+
+impl StatusChange {
+    fn into_contract(self) -> contract::MindRequest {
+        contract::MindRequest::StatusChange(contract::StatusChange {
+            item: self.item.into_contract(),
+            status: self.status.into_contract(),
+            body: self.body.map(contract::TextBody::new),
+        })
+    }
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct AliasAssignment {
+    pub item: ItemReferenceText,
+    pub alias: String,
+}
+
+impl AliasAssignment {
+    fn into_contract(self) -> contract::MindRequest {
+        contract::MindRequest::AliasAssignment(contract::AliasAssignment {
+            item: self.item.into_contract(),
+            alias: contract::ExternalAlias::new(self.alias),
+        })
+    }
+}
+
 impl NotaEncode for ItemReferenceText {
     fn encode(&self, encoder: &mut Encoder) -> nota_codec::Result<()> {
         match self {
@@ -597,6 +761,10 @@ pub enum MindTextRequest {
     ActivitySubmission(ActivitySubmission),
     ActivityQuery(ActivityQuery),
     Opening(Opening),
+    NoteSubmission(NoteSubmission),
+    Link(Link),
+    StatusChange(StatusChange),
+    AliasAssignment(AliasAssignment),
     Query(Query),
 }
 
@@ -617,6 +785,10 @@ impl MindTextRequest {
             Self::ActivitySubmission(submission) => submission.into_contract(),
             Self::ActivityQuery(query) => query.into_contract(),
             Self::Opening(opening) => Ok(opening.into_contract()),
+            Self::NoteSubmission(submission) => Ok(submission.into_contract()),
+            Self::Link(link) => Ok(link.into_contract()),
+            Self::StatusChange(change) => Ok(change.into_contract()),
+            Self::AliasAssignment(assignment) => Ok(assignment.into_contract()),
             Self::Query(query) => Ok(query.into_contract()),
         }
     }
@@ -632,6 +804,10 @@ impl NotaEncode for MindTextRequest {
             Self::ActivitySubmission(submission) => submission.encode(encoder),
             Self::ActivityQuery(query) => query.encode(encoder),
             Self::Opening(opening) => opening.encode(encoder),
+            Self::NoteSubmission(submission) => submission.encode(encoder),
+            Self::Link(link) => link.encode(encoder),
+            Self::StatusChange(change) => change.encode(encoder),
+            Self::AliasAssignment(assignment) => assignment.encode(encoder),
             Self::Query(query) => query.encode(encoder),
         }
     }
@@ -649,6 +825,10 @@ impl NotaDecode for MindTextRequest {
             )?)),
             "ActivityQuery" => Ok(Self::ActivityQuery(ActivityQuery::decode(decoder)?)),
             "Opening" => Ok(Self::Opening(Opening::decode(decoder)?)),
+            "NoteSubmission" => Ok(Self::NoteSubmission(NoteSubmission::decode(decoder)?)),
+            "Link" => Ok(Self::Link(Link::decode(decoder)?)),
+            "StatusChange" => Ok(Self::StatusChange(StatusChange::decode(decoder)?)),
+            "AliasAssignment" => Ok(Self::AliasAssignment(AliasAssignment::decode(decoder)?)),
             "Query" => Ok(Self::Query(Query::decode(decoder)?)),
             other => Err(nota_codec::Error::UnknownKindForVerb {
                 verb: "MindTextRequest",
@@ -966,26 +1146,6 @@ pub struct ItemTarget {
     pub id: String,
 }
 
-#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
-pub struct Report {
-    pub path: String,
-}
-
-#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
-pub struct GitCommit {
-    pub hash: String,
-}
-
-#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
-pub struct BeadsTask {
-    pub token: String,
-}
-
-#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
-pub struct File {
-    pub path: String,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EdgeTargetText {
     ItemTarget(ItemTarget),
@@ -1239,6 +1399,58 @@ impl OpeningReceipt {
 }
 
 #[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct NoteReceipt {
+    pub event: NoteAddedEvent,
+}
+
+impl NoteReceipt {
+    fn from_contract(receipt: contract::NoteReceipt) -> Self {
+        Self {
+            event: NoteAddedEvent::from_contract(receipt.event),
+        }
+    }
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct LinkReceipt {
+    pub event: EdgeAddedEvent,
+}
+
+impl LinkReceipt {
+    fn from_contract(receipt: contract::LinkReceipt) -> Self {
+        Self {
+            event: EdgeAddedEvent::from_contract(receipt.event),
+        }
+    }
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct StatusReceipt {
+    pub event: StatusChangedEvent,
+}
+
+impl StatusReceipt {
+    fn from_contract(receipt: contract::StatusReceipt) -> Self {
+        Self {
+            event: StatusChangedEvent::from_contract(receipt.event),
+        }
+    }
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
+pub struct AliasReceipt {
+    pub event: AliasAddedEvent,
+}
+
+impl AliasReceipt {
+    fn from_contract(receipt: contract::AliasReceipt) -> Self {
+        Self {
+            event: AliasAddedEvent::from_contract(receipt.event),
+        }
+    }
+}
+
+#[derive(NotaRecord, Debug, Clone, PartialEq, Eq)]
 pub struct View {
     pub items: Vec<Item>,
     pub edges: Vec<Edge>,
@@ -1327,6 +1539,10 @@ pub enum MindTextReply {
     ActivityAcknowledgment(ActivityAcknowledgment),
     ActivityList(ActivityList),
     OpeningReceipt(OpeningReceipt),
+    NoteReceipt(NoteReceipt),
+    LinkReceipt(LinkReceipt),
+    StatusReceipt(StatusReceipt),
+    AliasReceipt(AliasReceipt),
     View(View),
     Rejection(Rejection),
 }
@@ -1361,22 +1577,22 @@ impl MindTextReply {
             contract::MindReply::OpeningReceipt(receipt) => {
                 Ok(Self::OpeningReceipt(OpeningReceipt::from_contract(receipt)))
             }
+            contract::MindReply::NoteReceipt(receipt) => {
+                Ok(Self::NoteReceipt(NoteReceipt::from_contract(receipt)))
+            }
+            contract::MindReply::LinkReceipt(receipt) => {
+                Ok(Self::LinkReceipt(LinkReceipt::from_contract(receipt)))
+            }
+            contract::MindReply::StatusReceipt(receipt) => {
+                Ok(Self::StatusReceipt(StatusReceipt::from_contract(receipt)))
+            }
+            contract::MindReply::AliasReceipt(receipt) => {
+                Ok(Self::AliasReceipt(AliasReceipt::from_contract(receipt)))
+            }
             contract::MindReply::View(view) => Ok(Self::View(View::from_contract(view))),
             contract::MindReply::Rejection(rejection) => {
                 Ok(Self::Rejection(Rejection::from_contract(rejection)))
             }
-            contract::MindReply::NoteReceipt(_) => Err(Error::UnsupportedTextReply {
-                reply: "NoteReceipt",
-            }),
-            contract::MindReply::LinkReceipt(_) => Err(Error::UnsupportedTextReply {
-                reply: "LinkReceipt",
-            }),
-            contract::MindReply::StatusReceipt(_) => Err(Error::UnsupportedTextReply {
-                reply: "StatusReceipt",
-            }),
-            contract::MindReply::AliasReceipt(_) => Err(Error::UnsupportedTextReply {
-                reply: "AliasReceipt",
-            }),
         }
     }
 
@@ -1399,6 +1615,10 @@ impl NotaEncode for MindTextReply {
             Self::ActivityAcknowledgment(acknowledgment) => acknowledgment.encode(encoder),
             Self::ActivityList(list) => list.encode(encoder),
             Self::OpeningReceipt(receipt) => receipt.encode(encoder),
+            Self::NoteReceipt(receipt) => receipt.encode(encoder),
+            Self::LinkReceipt(receipt) => receipt.encode(encoder),
+            Self::StatusReceipt(receipt) => receipt.encode(encoder),
+            Self::AliasReceipt(receipt) => receipt.encode(encoder),
             Self::View(view) => view.encode(encoder),
             Self::Rejection(rejection) => rejection.encode(encoder),
         }

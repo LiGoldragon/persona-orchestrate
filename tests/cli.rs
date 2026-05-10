@@ -114,6 +114,65 @@ fn nota_query_text_maps_to_signal_request() {
     assert_eq!(query.limit.into_u16(), 10);
 }
 
+#[test]
+fn nota_work_mutation_text_maps_to_signal_requests() {
+    let item_id = "item-0000000000000001";
+
+    let note = persona_mind::MindTextRequest::from_nota(&format!(
+        "(NoteSubmission (Stable {item_id}) \"note body\")"
+    ))
+    .expect("note text decodes")
+    .into_request()
+    .expect("note maps to signal");
+
+    let MindRequest::NoteSubmission(note) = note else {
+        panic!("expected note submission");
+    };
+    assert_eq!(
+        note.item,
+        signal_persona_mind::ItemReference::Stable(signal_persona_mind::StableItemId::new(item_id))
+    );
+
+    let link = persona_mind::MindTextRequest::from_nota(&format!(
+        "(Link (Stable {item_id}) References (Report \"reports/operator/105-command-line-mind-architecture-survey.md\") None)"
+    ))
+    .expect("link text decodes")
+    .into_request()
+    .expect("link maps to signal");
+
+    let MindRequest::Link(link) = link else {
+        panic!("expected link");
+    };
+    assert_eq!(link.kind, signal_persona_mind::EdgeKind::References);
+
+    let status = persona_mind::MindTextRequest::from_nota(&format!(
+        "(StatusChange (Stable {item_id}) InProgress \"started\")"
+    ))
+    .expect("status text decodes")
+    .into_request()
+    .expect("status maps to signal");
+
+    let MindRequest::StatusChange(status) = status else {
+        panic!("expected status change");
+    };
+    assert_eq!(status.status, signal_persona_mind::ItemStatus::InProgress);
+
+    let alias = persona_mind::MindTextRequest::from_nota(&format!(
+        "(AliasAssignment (Stable {item_id}) primary-test)"
+    ))
+    .expect("alias text decodes")
+    .into_request()
+    .expect("alias maps to signal");
+
+    let MindRequest::AliasAssignment(alias) = alias else {
+        panic!("expected alias assignment");
+    };
+    assert_eq!(
+        alias.alias,
+        signal_persona_mind::ExternalAlias::new("primary-test")
+    );
+}
+
 #[tokio::test]
 async fn mind_cli_sends_nota_role_claim_to_daemon() {
     let fixture = CliFixture::new("claim");
@@ -289,6 +348,122 @@ async fn mind_cli_opens_and_queries_work_item_through_daemon() {
     let query = String::from_utf8(query_output).expect("query output utf8");
     assert!(query.contains("(View [(Item"));
     assert!(query.contains("\"Open CLI-visible work\""));
+}
+
+#[tokio::test]
+async fn mind_cli_mutates_work_item_through_daemon() {
+    let fixture = CliFixture::new("mutate-work-item");
+    let daemon = fixture.bind().await;
+    let endpoint = daemon.endpoint().clone();
+    let server = tokio::spawn(async move { daemon.serve_count(6).await });
+    let socket = endpoint.as_path().to_str().expect("socket path utf8");
+    let item_id = "item-0000000000000001";
+
+    let mut opening_output = Vec::new();
+    MindCommand::from_arguments([
+        "--socket",
+        socket,
+        "--actor",
+        "operator",
+        "(Opening Task High \"Mutate CLI-visible work\" \"created through mind text\")",
+    ])
+    .run(&mut opening_output)
+    .await
+    .expect("cli opens work item");
+
+    let mut note_output = Vec::new();
+    MindCommand::from_arguments([
+        "--socket",
+        socket,
+        "--actor",
+        "designer",
+        &format!("(NoteSubmission (Stable {item_id}) \"designer note\")"),
+    ])
+    .run(&mut note_output)
+    .await
+    .expect("cli adds note");
+
+    let mut alias_output = Vec::new();
+    MindCommand::from_arguments([
+        "--socket",
+        socket,
+        "--actor",
+        "operator",
+        &format!("(AliasAssignment (Stable {item_id}) primary-mind-text)"),
+    ])
+    .run(&mut alias_output)
+    .await
+    .expect("cli adds alias");
+
+    let mut link_output = Vec::new();
+    MindCommand::from_arguments([
+        "--socket",
+        socket,
+        "--actor",
+        "operator",
+        &format!(
+            "(Link (Stable {item_id}) References (Report \"reports/operator/105-command-line-mind-architecture-survey.md\") \"source report\")"
+        ),
+    ])
+    .run(&mut link_output)
+    .await
+    .expect("cli adds report link");
+
+    let mut status_output = Vec::new();
+    MindCommand::from_arguments([
+        "--socket",
+        socket,
+        "--actor",
+        "operator",
+        &format!("(StatusChange (Stable {item_id}) InProgress \"implementation started\")"),
+    ])
+    .run(&mut status_output)
+    .await
+    .expect("cli changes status");
+
+    let mut query_output = Vec::new();
+    MindCommand::from_arguments([
+        "--socket",
+        socket,
+        "--actor",
+        "operator",
+        &format!("(Query (ByItem (Stable {item_id})) 20)"),
+    ])
+    .run(&mut query_output)
+    .await
+    .expect("cli queries work item");
+
+    server
+        .await
+        .expect("daemon task joins")
+        .expect("daemon serves mutation requests");
+
+    assert!(
+        String::from_utf8(note_output)
+            .expect("note output utf8")
+            .contains("(NoteReceipt")
+    );
+    assert!(
+        String::from_utf8(alias_output)
+            .expect("alias output utf8")
+            .contains("(AliasReceipt")
+    );
+    assert!(
+        String::from_utf8(link_output)
+            .expect("link output utf8")
+            .contains("(LinkReceipt")
+    );
+    assert!(
+        String::from_utf8(status_output)
+            .expect("status output utf8")
+            .contains("(StatusReceipt")
+    );
+
+    let query = String::from_utf8(query_output).expect("query output utf8");
+    assert!(query.contains("InProgress"));
+    assert!(query.contains("primary-mind-text"));
+    assert!(query.contains("\"designer note\""));
+    assert!(query.contains("reports/operator/105-command-line-mind-architecture-survey.md"));
 }
 
 #[tokio::test]

@@ -63,7 +63,4 @@ pub enum Error {
 
     #[error("expected one NOTA request argument, got {count}")]
     WrongRequestArgumentCount { count: usize },
-
-    #[error("unsupported text reply: {reply}")]
-    UnsupportedTextReply { reply: &'static str },
 }
