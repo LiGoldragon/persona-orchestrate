@@ -1,3 +1,6 @@
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use persona_mind::actors::{ActorKind, ActorManifest, ActorResidency, TraceAction};
 use persona_mind::{
     ActorRef, MindEnvelope, MindRoot, MindRootArguments, MindRootReply, StoreLocation,
@@ -12,16 +15,32 @@ use signal_persona_mind::{
 struct ActorFixture {
     root: ActorRef<MindRoot>,
     actor: ActorName,
+    store: PathBuf,
 }
 
 impl ActorFixture {
     async fn new() -> Self {
+        let store = Self::store_path();
         Self {
-            root: MindRoot::start(MindRootArguments::new(StoreLocation::new("mind.redb")))
-                .await
-                .expect("mind root starts"),
+            root: MindRoot::start(MindRootArguments::new(StoreLocation::new(
+                store.to_string_lossy().to_string(),
+            )))
+            .await
+            .expect("mind root starts"),
             actor: ActorName::new("operator-assistant"),
+            store,
         }
+    }
+
+    fn store_path() -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "persona-mind-actor-topology-{}-{stamp}.redb",
+            std::process::id()
+        ))
     }
 
     fn envelope(&self, request: MindRequest) -> MindEnvelope {
@@ -39,6 +58,7 @@ impl ActorFixture {
 
     async fn stop(self) {
         MindRoot::stop(self.root).await.expect("mind root stops");
+        let _ = std::fs::remove_file(self.store);
     }
 }
 

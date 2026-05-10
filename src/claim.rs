@@ -1,4 +1,4 @@
-use crate::PersonaRole;
+use crate::{MindTables, PersonaRole, Result, StoreLocation, StoredClaim};
 use signal_persona_mind::{
     ClaimAcceptance, ClaimEntry, ClaimRejection, MindReply, RoleClaim, RoleName, RoleObservation,
     RoleRelease, RoleSnapshot, RoleStatus, ScopeConflict, ScopeReference,
@@ -69,82 +69,102 @@ impl ClaimState {
 }
 
 pub struct ClaimLedger {
-    entries: Vec<ClaimRecord>,
+    tables: MindTables,
 }
 
 impl ClaimLedger {
-    pub fn open() -> Self {
-        Self {
-            entries: Vec::new(),
-        }
+    pub fn open(store: &StoreLocation) -> Result<Self> {
+        Ok(Self {
+            tables: MindTables::open(store)?,
+        })
     }
 
-    pub fn apply_claim(&mut self, claim: RoleClaim) -> MindReply {
-        let conflicts = self.conflicts_for(&claim);
+    pub fn apply_claim(&self, claim: RoleClaim) -> Result<MindReply> {
+        let entries = self.tables.claim_records()?;
+        let conflicts = Self::conflicts_for(&entries, &claim);
         if !conflicts.is_empty() {
-            return MindReply::ClaimRejection(ClaimRejection {
+            return Ok(MindReply::ClaimRejection(ClaimRejection {
                 role: claim.role,
                 conflicts,
-            });
+            }));
         }
 
+        let mut next_entries = entries.clone();
         for scope in &claim.scopes {
-            if self.role_already_owns(&claim.role, scope) {
+            if Self::role_already_owns(&next_entries, &claim.role, scope) {
                 continue;
             }
-            self.entries
+            next_entries
                 .retain(|entry| entry.role != claim.role || !scope_contains(scope, &entry.scope));
-            self.entries.push(ClaimRecord {
-                role: claim.role,
-                scope: scope.clone(),
-                reason: claim.reason.clone(),
-            });
+            next_entries.push(StoredClaim::new(
+                claim.role,
+                scope.clone(),
+                claim.reason.clone(),
+            ));
         }
 
-        MindReply::ClaimAcceptance(ClaimAcceptance {
+        let remove_keys = entries
+            .iter()
+            .filter(|entry| entry.role == claim.role)
+            .map(StoredClaim::key)
+            .collect::<Vec<_>>();
+        let insert_claims = next_entries
+            .iter()
+            .filter(|entry| entry.role == claim.role)
+            .cloned()
+            .collect::<Vec<_>>();
+        self.tables.replace_claims(&remove_keys, &insert_claims)?;
+
+        Ok(MindReply::ClaimAcceptance(ClaimAcceptance {
             role: claim.role,
             scopes: claim.scopes,
-        })
+        }))
     }
 
-    pub fn apply_release(&mut self, release: RoleRelease) -> MindReply {
-        let mut released_scopes = Vec::new();
-        self.entries.retain(|entry| {
-            if entry.role == release.role {
-                released_scopes.push(entry.scope.clone());
-                false
-            } else {
-                true
-            }
-        });
+    pub fn apply_release(&self, release: RoleRelease) -> Result<MindReply> {
+        let entries = self.tables.claim_records()?;
+        let released_scopes = entries
+            .iter()
+            .filter(|entry| entry.role == release.role)
+            .map(|entry| entry.scope.clone())
+            .collect::<Vec<_>>();
+        let remove_keys = entries
+            .iter()
+            .filter(|entry| entry.role == release.role)
+            .map(StoredClaim::key)
+            .collect::<Vec<_>>();
+        self.tables.replace_claims(&remove_keys, &[])?;
 
-        MindReply::ReleaseAcknowledgment(signal_persona_mind::ReleaseAcknowledgment {
-            role: release.role,
-            released_scopes,
-        })
+        Ok(MindReply::ReleaseAcknowledgment(
+            signal_persona_mind::ReleaseAcknowledgment {
+                role: release.role,
+                released_scopes,
+            },
+        ))
     }
 
-    pub fn observe(&self, _observation: RoleObservation) -> MindReply {
+    pub fn observe(&self, _observation: RoleObservation) -> Result<MindReply> {
+        let entries = self.tables.claim_records()?;
         let roles = RoleName::ALL
             .into_iter()
             .map(|role| RoleStatus {
                 role,
-                claims: self.claims_for(role),
+                claims: Self::claims_for(&entries, role),
             })
             .collect();
 
-        MindReply::RoleSnapshot(RoleSnapshot {
+        Ok(MindReply::RoleSnapshot(RoleSnapshot {
             roles,
             recent_activity: Vec::new(),
-        })
+        }))
     }
 
-    fn conflicts_for(&self, claim: &RoleClaim) -> Vec<ScopeConflict> {
+    fn conflicts_for(entries: &[StoredClaim], claim: &RoleClaim) -> Vec<ScopeConflict> {
         claim
             .scopes
             .iter()
             .flat_map(|scope| {
-                self.entries
+                entries
                     .iter()
                     .filter(move |entry| {
                         entry.role != claim.role && scopes_overlap(scope, &entry.scope)
@@ -158,14 +178,14 @@ impl ClaimLedger {
             .collect()
     }
 
-    fn role_already_owns(&self, role: &RoleName, scope: &ScopeReference) -> bool {
-        self.entries
+    fn role_already_owns(entries: &[StoredClaim], role: &RoleName, scope: &ScopeReference) -> bool {
+        entries
             .iter()
             .any(|entry| entry.role == *role && scope_contains(&entry.scope, scope))
     }
 
-    fn claims_for(&self, role: RoleName) -> Vec<ClaimEntry> {
-        self.entries
+    fn claims_for(entries: &[StoredClaim], role: RoleName) -> Vec<ClaimEntry> {
+        entries
             .iter()
             .filter(|entry| entry.role == role)
             .map(|entry| ClaimEntry {
@@ -174,19 +194,6 @@ impl ClaimLedger {
             })
             .collect()
     }
-}
-
-impl Default for ClaimLedger {
-    fn default() -> Self {
-        Self::open()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ClaimRecord {
-    role: RoleName,
-    scope: ScopeReference,
-    reason: signal_persona_mind::ScopeReason,
 }
 
 struct ClaimPath {

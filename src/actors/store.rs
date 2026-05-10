@@ -1,5 +1,4 @@
 use kameo::actor::{Actor, ActorRef};
-use kameo::error::Infallible;
 use kameo::message::{Context, Message};
 use signal_persona_mind::MindRequest;
 
@@ -39,11 +38,11 @@ pub struct ReadClaims {
 }
 
 impl StoreSupervisor {
-    fn new(store: StoreLocation) -> Self {
-        Self {
-            memory: MemoryState::open(store),
-            claims: ClaimLedger::open(),
-        }
+    fn new(store: StoreLocation) -> crate::Result<Self> {
+        Ok(Self {
+            memory: MemoryState::open(store.clone()),
+            claims: ClaimLedger::open(&store)?,
+        })
     }
 
     fn apply_memory(&self, envelope: MindEnvelope, mut trace: ActorTrace) -> PipelineReply {
@@ -72,8 +71,16 @@ impl StoreSupervisor {
         trace.record(ActorKind::SemaWriter, TraceAction::WriteIntentSent);
 
         let reply = match envelope.request().clone() {
-            MindRequest::RoleClaim(claim) => Some(self.claims.apply_claim(claim)),
-            MindRequest::RoleRelease(release) => Some(self.claims.apply_release(release)),
+            MindRequest::RoleClaim(claim) => Some(
+                self.claims
+                    .apply_claim(claim)
+                    .unwrap_or_else(Self::persistence_rejection),
+            ),
+            MindRequest::RoleRelease(release) => Some(
+                self.claims
+                    .apply_release(release)
+                    .unwrap_or_else(Self::persistence_rejection),
+            ),
             _ => None,
         };
 
@@ -87,23 +94,33 @@ impl StoreSupervisor {
         trace.record(ActorKind::SemaReader, TraceAction::MessageReceived);
 
         let reply = match envelope.request().clone() {
-            MindRequest::RoleObservation(observation) => Some(self.claims.observe(observation)),
+            MindRequest::RoleObservation(observation) => Some(
+                self.claims
+                    .observe(observation)
+                    .unwrap_or_else(Self::persistence_rejection),
+            ),
             _ => None,
         };
 
         PipelineReply::new(reply, trace)
     }
+
+    fn persistence_rejection(_error: crate::Error) -> signal_persona_mind::MindReply {
+        signal_persona_mind::MindReply::Rejection(signal_persona_mind::Rejection {
+            reason: signal_persona_mind::RejectionReason::PersistenceRejected,
+        })
+    }
 }
 
 impl Actor for StoreSupervisor {
     type Args = Arguments;
-    type Error = Infallible;
+    type Error = crate::Error;
 
     async fn on_start(
         arguments: Self::Args,
         _actor_reference: ActorRef<Self>,
     ) -> Result<Self, Self::Error> {
-        Ok(Self::new(arguments.store))
+        Self::new(arguments.store)
     }
 }
 

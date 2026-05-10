@@ -3,12 +3,12 @@
 *Central Kameo actor system for Persona coordination, work memory, and the
 command-line mind.*
 
-> Status: the crate has a real Kameo runtime, an in-memory work graph reducer,
-> and a first Unix-socket Signal-frame daemon/client transport around
-> `MindRoot`. The `mind` binary can run a daemon and submit NOTA role
-> claim/release/observation requests through that daemon. Durable `mind.redb`,
-> full NOTA coverage, durable role storage, handoff flow, and activity flow are
-> the next foundational implementation wave.
+> Status: the crate has a real Kameo runtime, a mind-local Sema table for
+> durable role claims, an in-memory work graph reducer, and a Unix-socket
+> Signal-frame daemon/client transport around `MindRoot`. The `mind` binary can
+> run a daemon and submit NOTA role claim/release/observation requests through
+> that daemon. Full work-graph persistence, full NOTA coverage, handoff flow,
+> and activity flow are the next foundational implementation wave.
 
 ---
 
@@ -173,7 +173,8 @@ lands.
 Current implementation:
 
 - `StoreSupervisor` owns `MemoryState`.
-- `StoreSupervisor` owns an in-memory `ClaimLedger`.
+- `StoreSupervisor` owns a `ClaimLedger` backed by mind-local Sema tables in
+  `mind.redb`.
 - `MemoryState` owns a private in-memory graph.
 - Work/memory mutations append typed `Event` values.
 - Queries read the in-memory graph and produce typed `View` replies.
@@ -321,6 +322,8 @@ This repo does not own:
 - A missing daemon cannot produce a client reply.
 - The daemon owns `MindRoot` for its process lifetime.
 - The daemon owns `mind.redb`; the CLI never opens the database.
+- Role claims, releases, and observations read/write the mind-local Sema claims
+  table in `mind.redb`.
 - `MindRequest` and `MindReply` come from `signal-persona-mind`; the CLI does
   not define a parallel command vocabulary.
 - All public state operations enter the actor system as one `MindEnvelope`.
@@ -377,7 +380,7 @@ constraints:
 | `daemon_uses_signal_auth_for_actor_identity` | caller identity is derived from Signal auth before building `MindEnvelope`. |
 | `daemon_rejects_request_frames_without_auth` | daemon cannot accept unauthenticated request frames. |
 | `client_cannot_reply_without_daemon_signal_frame` | clients cannot fabricate successful daemon replies. |
-| `mind_store_survives_process_restart` | durable `mind.redb` exists. |
+| `mind_store_survives_process_restart` | role claims committed by one daemon process are visible after a daemon restart on the same `mind.redb`. |
 | `mind_runs_without_lock_file_projection` | lock files are outside the implementation. |
 | `beads_import_creates_alias_only` | no live BEADS bridge. |
 
@@ -403,6 +406,7 @@ src/actors/trace.rs        actor trace witness types
 src/claim.rs               claim-scope reducer
 src/memory.rs              memory/work graph reducer
 src/role.rs                local role value
+src/tables.rs              mind-local Sema schema and role-claim table
 src/text.rs                NOTA role-state projection for mind CLI
 src/transport.rs           Unix-socket Signal-frame client/daemon transport
 src/main.rs                command-line entry point

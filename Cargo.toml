@@ -2,7 +2,7 @@
 name         = "persona-mind"
 version      = "0.1.0"
 edition      = "2024"
-rust-version = "1.88"
+rust-version = "1.89"
 license      = "MIT OR Apache-2.0"
 repository   = "https://github.com/LiGoldragon/persona-mind"
 description  = "Typed mind state for Persona agents."
@@ -19,6 +19,8 @@ path = "src/main.rs"
 [dependencies]
 kameo               = { version = "0.20", default-features = false, features = ["macros", "tracing"] }
 nota-codec          = { git = "https://github.com/LiGoldragon/nota-codec.git", branch = "main" }
+rkyv                = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
+sema                = { git = "https://github.com/LiGoldragon/sema.git" }
 signal-core         = { git = "https://github.com/LiGoldragon/signal-core.git" }
 signal-persona-mind = { git = "https://github.com/LiGoldragon/signal-persona-mind.git" }
 thiserror           = "2"

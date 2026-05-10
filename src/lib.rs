@@ -5,6 +5,7 @@ pub mod envelope;
 pub mod error;
 pub mod memory;
 pub mod role;
+pub mod tables;
 pub mod text;
 pub mod transport;
 
@@ -18,5 +19,6 @@ pub use error::{Error, Result};
 pub use kameo::actor::ActorRef;
 pub use memory::{MemoryState, StoreLocation};
 pub use role::PersonaRole;
+pub use tables::{MindTables, StoredClaim};
 pub use text::{MindTextReply, MindTextRequest};
 pub use transport::{MindClient, MindDaemon, MindDaemonEndpoint, MindFrameCodec};

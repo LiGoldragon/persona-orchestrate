@@ -25,6 +25,9 @@ pub enum Error {
     #[error("nota: {0}")]
     Nota(#[from] nota_codec::Error),
 
+    #[error("sema: {0}")]
+    Sema(#[from] sema::Error),
+
     #[error("unexpected signal frame: {0}")]
     UnexpectedFrame(&'static str),
 

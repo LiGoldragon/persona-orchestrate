@@ -5,6 +5,7 @@
 //! durable tables land.
 
 use std::cell::RefCell;
+use std::path::Path;
 
 use crate::MindEnvelope;
 use signal_persona_mind::{
@@ -442,5 +443,9 @@ impl StoreLocation {
 
     pub fn as_str(&self) -> &str {
         &self.path
+    }
+
+    pub fn as_path(&self) -> &Path {
+        Path::new(&self.path)
     }
 }
