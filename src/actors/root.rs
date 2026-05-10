@@ -1,57 +1,36 @@
-use std::sync::atomic::{AtomicU64, Ordering};
-
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use kameo::actor::{Actor, ActorRef, Spawn};
+use kameo::error::Infallible;
+use kameo::message::{Context, Message};
 use signal_persona_mind::MindReply;
 
-use crate::error::ActorReply;
 use crate::{Error, MindEnvelope, Result, StoreLocation};
 
 use super::manifest::ActorManifest;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 use super::{config, dispatch, domain, ingress, reply, store, subscription, view};
 
-struct MindRoot;
-
-pub struct State {
-    ingress: ActorRef<ingress::Message>,
+struct MindRootActor {
+    ingress: ActorRef<ingress::IngressSupervisorActor>,
     manifest: ActorManifest,
 }
 
 pub struct Arguments {
     pub store: StoreLocation,
-    actor_prefix: String,
 }
 
 impl Arguments {
     pub fn new(store: StoreLocation) -> Self {
-        static NEXT_ACTOR_PREFIX: AtomicU64 = AtomicU64::new(0);
-        let value = NEXT_ACTOR_PREFIX.fetch_add(1, Ordering::Relaxed);
-        Self {
-            store,
-            actor_prefix: format!("mind-{value}"),
-        }
-    }
-
-    fn root_name(&self) -> String {
-        format!("{}-root", self.actor_prefix)
-    }
-
-    fn child_name(&self, child: &str) -> String {
-        format!("{}-{child}", self.actor_prefix)
+        Self { store }
     }
 }
 
-pub enum Message {
-    Submit {
-        envelope: MindEnvelope,
-        reply_port: RpcReplyPort<RootReply>,
-    },
-    Manifest {
-        reply_port: RpcReplyPort<ActorManifest>,
-    },
+pub struct SubmitEnvelope {
+    pub envelope: MindEnvelope,
 }
 
-#[derive(Debug)]
+struct ReadManifest;
+
+#[derive(Debug, kameo::Reply)]
 pub struct RootReply {
     reply: Option<MindReply>,
     trace: ActorTrace,
@@ -71,8 +50,8 @@ impl RootReply {
     }
 }
 
-impl State {
-    pub fn new(ingress: ActorRef<ingress::Message>, manifest: ActorManifest) -> Self {
+impl MindRootActor {
+    fn new(ingress: ActorRef<ingress::IngressSupervisorActor>, manifest: ActorManifest) -> Self {
         Self { ingress, manifest }
     }
 
@@ -80,19 +59,11 @@ impl State {
         let mut trace = ActorTrace::new();
         trace.record(ActorKind::MindRootActor, TraceAction::MessageReceived);
 
-        let raw = self
+        let mut pipeline = self
             .ingress
-            .call(
-                |reply_port| ingress::Message::Accept {
-                    envelope,
-                    trace,
-                    reply_port,
-                },
-                None,
-            )
+            .ask(ingress::AcceptEnvelope { envelope, trace })
             .await
             .map_err(|error| Error::ActorCall(error.to_string()))?;
-        let mut pipeline = ActorReply::new(raw, "ingress accept").into_result()?;
         pipeline
             .trace
             .record(ActorKind::MindRootActor, TraceAction::MessageReplied);
@@ -102,171 +73,149 @@ impl State {
 }
 
 pub struct MindRootHandle {
-    actor_ref: ActorRef<Message>,
-    join_handle: tokio::task::JoinHandle<()>,
+    actor_reference: ActorRef<MindRootActor>,
 }
 
 impl MindRootHandle {
     pub async fn start(arguments: Arguments) -> Result<Self> {
-        let root_name = arguments.root_name();
-        let (actor_ref, join_handle) = Actor::spawn(Some(root_name), MindRoot, arguments)
-            .await
-            .map_err(|error| Error::ActorSpawn(error.to_string()))?;
+        let actor_reference = MindRootActor::spawn(arguments);
+        actor_reference.wait_for_startup().await;
 
-        Ok(Self {
-            actor_ref,
-            join_handle,
-        })
+        Ok(Self { actor_reference })
     }
 
     pub async fn submit(&self, envelope: MindEnvelope) -> Result<RootReply> {
-        let raw = self
-            .actor_ref
-            .call(
-                |reply_port| Message::Submit {
-                    envelope,
-                    reply_port,
-                },
-                None,
-            )
+        self.actor_reference
+            .ask(SubmitEnvelope { envelope })
             .await
-            .map_err(|error| Error::ActorCall(error.to_string()))?;
-        ActorReply::new(raw, "mind root submit").into_result()
+            .map_err(|error| Error::ActorCall(error.to_string()))
     }
 
     pub async fn manifest(&self) -> Result<ActorManifest> {
-        let raw = self
-            .actor_ref
-            .call(|reply_port| Message::Manifest { reply_port }, None)
+        self.actor_reference
+            .ask(ReadManifest)
             .await
-            .map_err(|error| Error::ActorCall(error.to_string()))?;
-        ActorReply::new(raw, "mind root manifest").into_result()
+            .map_err(|error| Error::ActorCall(error.to_string()))
     }
 
     pub async fn stop(self) -> Result<()> {
-        self.actor_ref.stop(None);
-        self.join_handle
+        self.actor_reference
+            .stop_gracefully()
             .await
-            .map_err(|error| Error::ActorJoin(error.to_string()))
+            .map_err(|error| Error::ActorCall(error.to_string()))?;
+        self.actor_reference.wait_for_shutdown().await;
+        Ok(())
     }
 }
 
-#[ractor::async_trait]
-impl Actor for MindRoot {
-    type Msg = Message;
-    type State = State;
-    type Arguments = Arguments;
+impl Actor for MindRootActor {
+    type Args = Arguments;
+    type Error = Infallible;
 
-    async fn pre_start(
-        &self,
-        myself: ActorRef<Self::Msg>,
-        arguments: Arguments,
-    ) -> std::result::Result<Self::State, ActorProcessingErr> {
+    async fn on_start(
+        arguments: Self::Args,
+        actor_reference: ActorRef<Self>,
+    ) -> std::result::Result<Self, Self::Error> {
         let manifest = ActorManifest::persona_mind_phase_one();
 
-        let (_config, _) = Actor::spawn_linked(
-            Some(arguments.child_name("config")),
-            config::Config,
+        let _config = config::ConfigActor::supervise(
+            &actor_reference,
             config::Arguments {
                 store: arguments.store.clone(),
             },
-            myself.get_cell(),
         )
-        .await?;
+        .spawn()
+        .await;
 
-        let (store, _) = Actor::spawn_linked(
-            Some(arguments.child_name("store-supervisor")),
-            store::StoreSupervisor,
+        let store = store::StoreSupervisorActor::supervise(
+            &actor_reference,
             store::Arguments {
                 store: arguments.store.clone(),
             },
-            myself.get_cell(),
         )
-        .await?;
+        .spawn()
+        .await;
 
-        let (_subscription, _) = Actor::spawn_linked(
-            Some(arguments.child_name("subscription-supervisor")),
-            subscription::SubscriptionSupervisor,
-            subscription::Arguments,
-            myself.get_cell(),
+        let _subscription = subscription::SubscriptionSupervisorActor::supervise(
+            &actor_reference,
+            subscription::Arguments::default(),
         )
-        .await?;
+        .spawn()
+        .await;
 
-        let (reply, _) = Actor::spawn_linked(
-            Some(arguments.child_name("reply-supervisor")),
-            reply::ReplySupervisor,
-            reply::Arguments,
-            myself.get_cell(),
-        )
-        .await?;
+        let reply =
+            reply::ReplySupervisorActor::supervise(&actor_reference, reply::Arguments::default())
+                .spawn()
+                .await;
 
-        let (view, _) = Actor::spawn_linked(
-            Some(arguments.child_name("view-supervisor")),
-            view::ViewSupervisor,
+        let view = view::ViewSupervisorActor::supervise(
+            &actor_reference,
             view::Arguments {
                 store: store.clone(),
             },
-            myself.get_cell(),
         )
-        .await?;
+        .spawn()
+        .await;
 
-        let (domain, _) = Actor::spawn_linked(
-            Some(arguments.child_name("domain-supervisor")),
-            domain::DomainSupervisor,
-            domain::Arguments { store },
-            myself.get_cell(),
+        let domain = domain::DomainSupervisorActor::supervise(
+            &actor_reference,
+            domain::Arguments {
+                store: store.clone(),
+            },
         )
-        .await?;
+        .spawn()
+        .await;
 
-        let (dispatch, _) = Actor::spawn_linked(
-            Some(arguments.child_name("dispatch-supervisor")),
-            dispatch::DispatchSupervisor,
+        let dispatch = dispatch::DispatchSupervisorActor::supervise(
+            &actor_reference,
             dispatch::Arguments {
                 domain,
                 view,
                 reply,
             },
-            myself.get_cell(),
         )
-        .await?;
+        .spawn()
+        .await;
 
-        let (ingress, _) = Actor::spawn_linked(
-            Some(arguments.child_name("ingress-supervisor")),
-            ingress::IngressSupervisor,
+        let ingress = ingress::IngressSupervisorActor::supervise(
+            &actor_reference,
             ingress::Arguments { dispatch },
-            myself.get_cell(),
         )
-        .await?;
+        .spawn()
+        .await;
 
-        Ok(State::new(ingress, manifest))
+        Ok(Self::new(ingress, manifest))
     }
+}
+
+impl Message<SubmitEnvelope> for MindRootActor {
+    type Reply = RootReply;
 
     async fn handle(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        message: Message,
-        state: &mut State,
-    ) -> std::result::Result<(), ActorProcessingErr> {
-        match message {
-            Message::Submit {
-                envelope,
-                reply_port,
-            } => {
-                let reply = match state.submit(envelope).await {
-                    Ok(reply) => reply,
-                    Err(_error) => {
-                        let mut trace = ActorTrace::new();
-                        trace.record(ActorKind::MindRootActor, TraceAction::MessageReceived);
-                        trace.record(ActorKind::ErrorShapeActor, TraceAction::MessageReplied);
-                        RootReply::new(None, trace)
-                    }
-                };
-                let _ = reply_port.send(reply);
-            }
-            Message::Manifest { reply_port } => {
-                let _ = reply_port.send(state.manifest.clone());
+        &mut self,
+        message: SubmitEnvelope,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        match self.submit(message.envelope).await {
+            Ok(reply) => reply,
+            Err(_error) => {
+                let mut trace = ActorTrace::new();
+                trace.record(ActorKind::MindRootActor, TraceAction::MessageReceived);
+                trace.record(ActorKind::ErrorShapeActor, TraceAction::MessageReplied);
+                RootReply::new(None, trace)
             }
         }
-        Ok(())
+    }
+}
+
+impl Message<ReadManifest> for MindRootActor {
+    type Reply = ActorManifest;
+
+    async fn handle(
+        &mut self,
+        _message: ReadManifest,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.manifest.clone()
     }
 }

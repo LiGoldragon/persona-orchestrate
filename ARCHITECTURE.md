@@ -1,9 +1,9 @@
 # persona-mind — architecture
 
-*Ractor-backed central state machine for Persona coordination and memory.*
+*Kameo-backed central state machine for Persona coordination and memory.*
 
-> Status: Phase 1 is `ractor`-backed and in-process. The runtime starts a
-> `ractor` tree, routes typed `MindEnvelope` requests through named
+> Status: Phase 1 is `kameo`-backed and in-process. The runtime starts a
+> `kameo` tree, routes typed `MindEnvelope` requests through named
 > supervisor actors, and proves the path with manifest/trace tests. Durable
 > `persona-sema` tables are the next storage substrate; current state is still
 > held by in-memory mind reducers behind the state/write actor path. The
@@ -47,10 +47,10 @@ flowchart LR
 The crate exposes:
 
 - `MindEnvelope` — caller identity plus one `MindRequest`.
-- `MindRuntime` — in-process `ractor` facade used by tests and future CLI
+- `MindRuntime` — in-process `kameo` facade used by tests and future CLI
   entry.
 - `actors::MindRootHandle` — root actor handle; the only bare
-  `Actor::spawn` site.
+  Kameo spawn site.
 - `actors::ActorManifest` — topology witness naming root, long-lived
   supervisors, and trace-phase actors.
 - `actors::ActorTrace` — per-request witness proving which actor planes ran.
@@ -64,7 +64,7 @@ grow a second command language.
 
 ## 2 · Runtime Topology
 
-Phase 1 starts these linked `ractor` actors:
+Phase 1 starts these supervised `kameo` actors:
 
 ```mermaid
 flowchart TB
@@ -109,22 +109,22 @@ flowchart TB
 
 The long-lived supervisors are real actors today. The smaller operation planes
 are trace-phase actors in Phase 1: they are explicit manifest entries and test
-witnesses, and their boundaries are the names that future fine-grained ractor
+witnesses, and their boundaries are the names that future fine-grained Kameo
 actors must preserve as persistence lands.
 
-### 2.1 · Ractor Boundary
+### 2.1 · Kameo Boundary
 
-`persona-mind` uses `ractor` directly. No second actor abstraction is required
-before persistence work proceeds.
+`persona-mind` uses `kameo` directly. No second actor abstraction is required
+before persistence work proceeds. Long-lived actor structs carry state directly;
+message types are per-verb records implemented through Kameo's `Message<T>`
+trait.
 
 The local `actors::manifest` and `actors::trace` modules are persona-mind
 architecture witnesses. Keep them local until multiple real runtime crates
 duplicate the same concrete API.
 
-Raw ractor splits behavior markers from mutable `State`. Treat that as
-framework mechanics. Keep marker types private or crate-private where possible;
-domain behavior belongs on data-bearing state, reducers owned by that state, or
-public handles.
+Kameo actors are data-bearing runtime nouns. Domain behavior belongs on those
+actor structs, reducers owned by those actor structs, or public handles.
 
 ## 3 · Request Paths
 
@@ -198,21 +198,21 @@ This repo does not own:
 - Every public operation enters as one `MindEnvelope`.
 - Mind-supplied identity, sequence, time, and operation context are
   infrastructure concerns; request payloads carry content, not authority.
-- The root actor is the only bare `Actor::spawn` site; children are linked
+- The root actor is the only bare Kameo spawn site; children are supervised
   from `MindRootActor`.
 - No shared `Arc<Mutex<T>>` state exists between actors.
 - Queries must not send write intents.
 - Every memory/work mutation appends a typed event.
 - BEADS is transitional import/history only, never an exclusive lock model.
 - Lock files are not durable truth for this crate.
-- Production code uses direct `ractor`; no second actor abstraction is a
+- Production code uses direct `kameo`; no second actor abstraction is a
   dependency or prerequisite.
 
 ## Code Map
 
 ```text
 src/lib.rs                 crate surface
-src/error.rs               typed Error enum and ractor call flattening
+src/error.rs               typed Error enum and actor call errors
 src/envelope.rs            MindEnvelope actor identity wrapper
 src/service.rs             MindRuntime in-process actor facade
 src/actors/mod.rs          actor module exports
@@ -241,9 +241,8 @@ tests/smoke.rs             claim reducer tests
 
 - `~/primary/reports/operator/101-persona-mind-full-architecture-proposal.md`
   — full actor-heavy target architecture.
-- `~/primary/reports/operator/102-actor-heavy-persona-mind-research.md`
-  — actor-system research. Its direct-ractor recommendation remains current;
-  extra abstraction-layer speculation is not persona-mind architecture.
+- `~/primary/reports/operator-assistant/99-kameo-adoption-and-code-quality-audit.md`
+  — Kameo adoption and code-quality audit for Persona migration.
 - `~/primary/reports/designer/100-persona-mind-architecture-proposal.md`
   — concrete ID, envelope, database-path, and table-key decisions.
 - `../signal-persona-mind/ARCHITECTURE.md` — request/reply contract.

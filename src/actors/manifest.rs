@@ -47,7 +47,7 @@ impl ManifestEdge {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, kameo::Reply)]
 pub struct ActorManifest {
     actors: Vec<ManifestActor>,
     edges: Vec<ManifestEdge>,

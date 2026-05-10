@@ -429,7 +429,7 @@ impl QueryLimitExt for QueryLimit {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, kameo::Reply)]
 pub struct StoreLocation {
     path: String,
 }

@@ -2,7 +2,7 @@
 name         = "persona-mind"
 version      = "0.1.0"
 edition      = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license      = "MIT OR Apache-2.0"
 repository   = "https://github.com/LiGoldragon/persona-mind"
 description  = "Typed mind state for Persona agents."
@@ -17,7 +17,7 @@ name = "mind"
 path = "src/main.rs"
 
 [dependencies]
-ractor              = { version = "0.15", features = ["async-trait"] }
+kameo               = { version = "0.20", default-features = false, features = ["macros", "tracing"] }
 signal-persona-mind = { git = "https://github.com/LiGoldragon/signal-persona-mind.git" }
 thiserror           = "2"
 tokio               = { version = "1", features = ["rt-multi-thread", "macros"] }

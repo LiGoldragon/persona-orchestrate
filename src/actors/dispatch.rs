@@ -1,8 +1,9 @@
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use kameo::actor::{Actor, ActorRef};
+use kameo::error::Infallible;
+use kameo::message::{Context, Message};
 use signal_persona_mind::MindRequest;
 
-use crate::error::ActorReply;
-use crate::{MindEnvelope, Result};
+use crate::{MindEnvelope, Result as CrateResult};
 
 use super::domain;
 use super::pipeline::PipelineReply;
@@ -10,33 +11,29 @@ use super::reply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 use super::view;
 
-pub(super) struct DispatchSupervisor;
-
-pub struct State {
-    domain: ActorRef<domain::Message>,
-    view: ActorRef<view::Message>,
-    reply: ActorRef<reply::Message>,
+pub(super) struct DispatchSupervisorActor {
+    domain: ActorRef<domain::DomainSupervisorActor>,
+    view: ActorRef<view::ViewSupervisorActor>,
+    reply: ActorRef<reply::ReplySupervisorActor>,
 }
 
-pub struct Arguments {
-    pub domain: ActorRef<domain::Message>,
-    pub view: ActorRef<view::Message>,
-    pub reply: ActorRef<reply::Message>,
+#[derive(Clone)]
+pub(super) struct Arguments {
+    pub(super) domain: ActorRef<domain::DomainSupervisorActor>,
+    pub(super) view: ActorRef<view::ViewSupervisorActor>,
+    pub(super) reply: ActorRef<reply::ReplySupervisorActor>,
 }
 
-pub enum Message {
-    Route {
-        envelope: MindEnvelope,
-        trace: ActorTrace,
-        reply_port: RpcReplyPort<PipelineReply>,
-    },
+pub struct RouteEnvelope {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
 }
 
-impl State {
-    pub fn new(
-        domain: ActorRef<domain::Message>,
-        view: ActorRef<view::Message>,
-        reply: ActorRef<reply::Message>,
+impl DispatchSupervisorActor {
+    fn new(
+        domain: ActorRef<domain::DomainSupervisorActor>,
+        view: ActorRef<view::ViewSupervisorActor>,
+        reply: ActorRef<reply::ReplySupervisorActor>,
     ) -> Self {
         Self {
             domain,
@@ -45,7 +42,11 @@ impl State {
         }
     }
 
-    async fn route(&self, envelope: MindEnvelope, mut trace: ActorTrace) -> Result<PipelineReply> {
+    async fn route(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
         trace.record(
             ActorKind::DispatchSupervisorActor,
             TraceAction::MessageReceived,
@@ -89,40 +90,22 @@ impl State {
         &self,
         envelope: MindEnvelope,
         trace: ActorTrace,
-    ) -> Result<PipelineReply> {
-        let raw = self
-            .domain
-            .call(
-                |reply_port| domain::Message::ApplyMemory {
-                    envelope,
-                    trace,
-                    reply_port,
-                },
-                None,
-            )
+    ) -> CrateResult<PipelineReply> {
+        self.domain
+            .ask(domain::ApplyMemory { envelope, trace })
             .await
-            .map_err(|error| crate::Error::ActorCall(error.to_string()))?;
-        ActorReply::new(raw, "domain apply memory").into_result()
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
     }
 
     async fn read_memory(
         &self,
         envelope: MindEnvelope,
         trace: ActorTrace,
-    ) -> Result<PipelineReply> {
-        let raw = self
-            .view
-            .call(
-                |reply_port| view::Message::ReadMemory {
-                    envelope,
-                    trace,
-                    reply_port,
-                },
-                None,
-            )
+    ) -> CrateResult<PipelineReply> {
+        self.view
+            .ask(view::ReadMemory { envelope, trace })
             .await
-            .map_err(|error| crate::Error::ActorCall(error.to_string()))?;
-        ActorReply::new(raw, "view read memory").into_result()
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
     }
 
     fn unsupported(
@@ -136,60 +119,40 @@ impl State {
         PipelineReply::new(None, trace)
     }
 
-    async fn shape_reply(&self, pipeline: PipelineReply) -> Result<PipelineReply> {
-        let raw = self
-            .reply
-            .call(
-                |reply_port| reply::Message::Shape {
-                    reply: pipeline.reply,
-                    trace: pipeline.trace,
-                    reply_port,
-                },
-                None,
-            )
+    async fn shape_reply(&self, pipeline: PipelineReply) -> CrateResult<PipelineReply> {
+        self.reply
+            .ask(reply::ShapeReply {
+                reply: pipeline.reply,
+                trace: pipeline.trace,
+            })
             .await
-            .map_err(|error| crate::Error::ActorCall(error.to_string()))?;
-        ActorReply::new(raw, "reply shape").into_result()
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
     }
 }
 
-#[ractor::async_trait]
-impl Actor for DispatchSupervisor {
-    type Msg = Message;
-    type State = State;
-    type Arguments = Arguments;
+impl Actor for DispatchSupervisorActor {
+    type Args = Arguments;
+    type Error = Infallible;
 
-    async fn pre_start(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        arguments: Arguments,
-    ) -> std::result::Result<Self::State, ActorProcessingErr> {
-        Ok(State::new(
-            arguments.domain,
-            arguments.view,
-            arguments.reply,
-        ))
+    async fn on_start(
+        arguments: Self::Args,
+        _actor_reference: ActorRef<Self>,
+    ) -> std::result::Result<Self, Self::Error> {
+        Ok(Self::new(arguments.domain, arguments.view, arguments.reply))
     }
+}
+
+impl Message<RouteEnvelope> for DispatchSupervisorActor {
+    type Reply = PipelineReply;
 
     async fn handle(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        message: Message,
-        state: &mut State,
-    ) -> std::result::Result<(), ActorProcessingErr> {
-        match message {
-            Message::Route {
-                envelope,
-                trace,
-                reply_port,
-            } => {
-                let reply = match state.route(envelope, trace).await {
-                    Ok(reply) => reply,
-                    Err(_error) => PipelineReply::new(None, ActorTrace::new()),
-                };
-                let _ = reply_port.send(reply);
-            }
+        &mut self,
+        message: RouteEnvelope,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        match self.route(message.envelope, message.trace).await {
+            Ok(reply) => reply,
+            Err(_error) => PipelineReply::new(None, ActorTrace::new()),
         }
-        Ok(())
     }
 }

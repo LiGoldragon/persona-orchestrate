@@ -1,33 +1,30 @@
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use kameo::actor::{Actor, ActorRef};
+use kameo::error::Infallible;
+use kameo::message::{Context, Message};
 use signal_persona_mind::MindRequest;
 
-use crate::error::ActorReply;
-use crate::{MindEnvelope, Result};
+use crate::{MindEnvelope, Result as CrateResult};
 
 use super::pipeline::PipelineReply;
 use super::store;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub(super) struct DomainSupervisor;
-
-pub struct State {
-    store: ActorRef<store::Message>,
+pub(super) struct DomainSupervisorActor {
+    store: ActorRef<store::StoreSupervisorActor>,
 }
 
-pub struct Arguments {
-    pub store: ActorRef<store::Message>,
+#[derive(Clone)]
+pub(super) struct Arguments {
+    pub(super) store: ActorRef<store::StoreSupervisorActor>,
 }
 
-pub enum Message {
-    ApplyMemory {
-        envelope: MindEnvelope,
-        trace: ActorTrace,
-        reply_port: RpcReplyPort<PipelineReply>,
-    },
+pub struct ApplyMemory {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
 }
 
-impl State {
-    pub fn new(store: ActorRef<store::Message>) -> Self {
+impl DomainSupervisorActor {
+    fn new(store: ActorRef<store::StoreSupervisorActor>) -> Self {
         Self { store }
     }
 
@@ -35,7 +32,7 @@ impl State {
         &self,
         envelope: MindEnvelope,
         mut trace: ActorTrace,
-    ) -> Result<PipelineReply> {
+    ) -> CrateResult<PipelineReply> {
         trace.record(
             ActorKind::DomainSupervisorActor,
             TraceAction::MessageReceived,
@@ -46,19 +43,37 @@ impl State {
         );
         MemoryOperation::from_request(envelope.request()).record_into(&mut trace);
 
-        let raw = self
-            .store
-            .call(
-                |reply_port| store::Message::ApplyMemory {
-                    envelope,
-                    trace,
-                    reply_port,
-                },
-                None,
-            )
+        self.store
+            .ask(store::ApplyMemory { envelope, trace })
             .await
-            .map_err(|error| crate::Error::ActorCall(error.to_string()))?;
-        ActorReply::new(raw, "store apply memory").into_result()
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+}
+
+impl Actor for DomainSupervisorActor {
+    type Args = Arguments;
+    type Error = Infallible;
+
+    async fn on_start(
+        arguments: Self::Args,
+        _actor_reference: ActorRef<Self>,
+    ) -> std::result::Result<Self, Self::Error> {
+        Ok(Self::new(arguments.store))
+    }
+}
+
+impl Message<ApplyMemory> for DomainSupervisorActor {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: ApplyMemory,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        match self.apply_memory(message.envelope, message.trace).await {
+            Ok(reply) => reply,
+            Err(_error) => PipelineReply::new(None, ActorTrace::new()),
+        }
     }
 }
 
@@ -81,42 +96,5 @@ impl MemoryOperation {
 
     fn record_into(&self, trace: &mut ActorTrace) {
         trace.record(self.actor, TraceAction::MessageReceived);
-    }
-}
-
-#[ractor::async_trait]
-impl Actor for DomainSupervisor {
-    type Msg = Message;
-    type State = State;
-    type Arguments = Arguments;
-
-    async fn pre_start(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        arguments: Arguments,
-    ) -> std::result::Result<Self::State, ActorProcessingErr> {
-        Ok(State::new(arguments.store))
-    }
-
-    async fn handle(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        message: Message,
-        state: &mut State,
-    ) -> std::result::Result<(), ActorProcessingErr> {
-        match message {
-            Message::ApplyMemory {
-                envelope,
-                trace,
-                reply_port,
-            } => {
-                let reply = match state.apply_memory(envelope, trace).await {
-                    Ok(reply) => reply,
-                    Err(_error) => PipelineReply::new(None, ActorTrace::new()),
-                };
-                let _ = reply_port.send(reply);
-            }
-        }
-        Ok(())
     }
 }

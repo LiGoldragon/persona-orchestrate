@@ -1,36 +1,37 @@
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use kameo::actor::{Actor, ActorRef};
+use kameo::error::Infallible;
+use kameo::message::{Context, Message};
 
-use crate::error::ActorReply;
-use crate::{MindEnvelope, Result};
+use crate::{MindEnvelope, Result as CrateResult};
 
 use super::dispatch;
 use super::pipeline::PipelineReply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub(super) struct IngressSupervisor;
-
-pub struct State {
-    dispatch: ActorRef<dispatch::Message>,
+pub(super) struct IngressSupervisorActor {
+    dispatch: ActorRef<dispatch::DispatchSupervisorActor>,
 }
 
-pub struct Arguments {
-    pub dispatch: ActorRef<dispatch::Message>,
+#[derive(Clone)]
+pub(super) struct Arguments {
+    pub(super) dispatch: ActorRef<dispatch::DispatchSupervisorActor>,
 }
 
-pub enum Message {
-    Accept {
-        envelope: MindEnvelope,
-        trace: ActorTrace,
-        reply_port: RpcReplyPort<PipelineReply>,
-    },
+pub struct AcceptEnvelope {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
 }
 
-impl State {
-    pub fn new(dispatch: ActorRef<dispatch::Message>) -> Self {
+impl IngressSupervisorActor {
+    fn new(dispatch: ActorRef<dispatch::DispatchSupervisorActor>) -> Self {
         Self { dispatch }
     }
 
-    async fn accept(&self, envelope: MindEnvelope, mut trace: ActorTrace) -> Result<PipelineReply> {
+    async fn accept(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
         trace.record(
             ActorKind::IngressSupervisorActor,
             TraceAction::MessageReceived,
@@ -40,55 +41,36 @@ impl State {
         trace.record(ActorKind::CallerIdentityActor, TraceAction::MessageReceived);
         trace.record(ActorKind::EnvelopeActor, TraceAction::MessageReplied);
 
-        let raw = self
-            .dispatch
-            .call(
-                |reply_port| dispatch::Message::Route {
-                    envelope,
-                    trace,
-                    reply_port,
-                },
-                None,
-            )
+        self.dispatch
+            .ask(dispatch::RouteEnvelope { envelope, trace })
             .await
-            .map_err(|error| crate::Error::ActorCall(error.to_string()))?;
-        ActorReply::new(raw, "dispatch route").into_result()
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
     }
 }
 
-#[ractor::async_trait]
-impl Actor for IngressSupervisor {
-    type Msg = Message;
-    type State = State;
-    type Arguments = Arguments;
+impl Actor for IngressSupervisorActor {
+    type Args = Arguments;
+    type Error = Infallible;
 
-    async fn pre_start(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        arguments: Arguments,
-    ) -> std::result::Result<Self::State, ActorProcessingErr> {
-        Ok(State::new(arguments.dispatch))
+    async fn on_start(
+        arguments: Self::Args,
+        _actor_reference: ActorRef<Self>,
+    ) -> std::result::Result<Self, Self::Error> {
+        Ok(Self::new(arguments.dispatch))
     }
+}
+
+impl Message<AcceptEnvelope> for IngressSupervisorActor {
+    type Reply = PipelineReply;
 
     async fn handle(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        message: Message,
-        state: &mut State,
-    ) -> std::result::Result<(), ActorProcessingErr> {
-        match message {
-            Message::Accept {
-                envelope,
-                trace,
-                reply_port,
-            } => {
-                let reply = match state.accept(envelope, trace).await {
-                    Ok(reply) => reply,
-                    Err(_error) => PipelineReply::new(None, ActorTrace::new()),
-                };
-                let _ = reply_port.send(reply);
-            }
+        &mut self,
+        message: AcceptEnvelope,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        match self.accept(message.envelope, message.trace).await {
+            Ok(reply) => reply,
+            Err(_error) => PipelineReply::new(None, ActorTrace::new()),
         }
-        Ok(())
     }
 }

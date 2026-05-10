@@ -2,6 +2,7 @@ use signal_persona_mind::MindReply;
 
 use super::trace::ActorTrace;
 
+#[derive(kameo::Reply)]
 pub(crate) struct PipelineReply {
     pub(crate) reply: Option<MindReply>,
     pub(crate) trace: ActorTrace,

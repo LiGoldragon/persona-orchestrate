@@ -202,7 +202,7 @@ impl ActorRuntimeFixture {
         Self {
             runtime: MindRuntime::start(StoreLocation::new("mind.redb"))
                 .await
-                .expect("ractor runtime starts"),
+                .expect("kameo runtime starts"),
             actor,
         }
     }
@@ -219,7 +219,7 @@ impl ActorRuntimeFixture {
     }
 
     async fn stop(self) {
-        self.runtime.stop().await.expect("ractor runtime stops");
+        self.runtime.stop().await.expect("kameo runtime stops");
     }
 }
 
@@ -232,7 +232,7 @@ fn raw_actor_spawn_cannot_escape_mind_root() {
         .flat_map(|file| {
             file.violations_for(&ForbiddenFragment {
                 text: "Actor::spawn",
-                reason: "raw ractor spawn outside MindRootActor",
+                reason: "raw Kameo spawn outside MindRootActor",
             })
         })
         .collect::<Vec<_>>();
@@ -320,7 +320,7 @@ fn actor_adapter_markers_cannot_be_public_zst_nouns() {
 }
 
 #[test]
-fn ractor_is_the_only_actor_library_boundary() {
+fn kameo_is_the_only_actor_library_boundary() {
     let forbidden_fragments = [
         ForbiddenFragment {
             text: "persona-actor",
@@ -344,59 +344,67 @@ fn ractor_is_the_only_actor_library_boundary() {
         },
         ForbiddenFragment {
             text: "actix =",
-            reason: "non-ractor actor dependency",
+            reason: "non-kameo actor dependency",
         },
         ForbiddenFragment {
             text: "name = \"actix\"",
-            reason: "non-ractor actor dependency",
+            reason: "non-kameo actor dependency",
         },
         ForbiddenFragment {
             text: "xtra =",
-            reason: "non-ractor actor dependency",
+            reason: "non-kameo actor dependency",
         },
         ForbiddenFragment {
             text: "name = \"xtra\"",
-            reason: "non-ractor actor dependency",
+            reason: "non-kameo actor dependency",
         },
         ForbiddenFragment {
             text: "bastion =",
-            reason: "non-ractor actor dependency",
+            reason: "non-kameo actor dependency",
         },
         ForbiddenFragment {
             text: "name = \"bastion\"",
-            reason: "non-ractor actor dependency",
+            reason: "non-kameo actor dependency",
         },
         ForbiddenFragment {
-            text: "kameo =",
-            reason: "non-ractor actor dependency",
+            text: "ractor =",
+            reason: "non-kameo actor dependency",
         },
         ForbiddenFragment {
-            text: "name = \"kameo\"",
-            reason: "non-ractor actor dependency",
+            text: "name = \"ractor\"",
+            reason: "non-kameo actor dependency",
+        },
+        ForbiddenFragment {
+            text: "use ractor",
+            reason: "non-kameo actor dependency",
+        },
+        ForbiddenFragment {
+            text: "ractor::",
+            reason: "non-kameo actor dependency",
         },
         ForbiddenFragment {
             text: "coerce =",
-            reason: "non-ractor actor dependency",
+            reason: "non-kameo actor dependency",
         },
         ForbiddenFragment {
             text: "name = \"coerce\"",
-            reason: "non-ractor actor dependency",
+            reason: "non-kameo actor dependency",
         },
         ForbiddenFragment {
             text: "kompact =",
-            reason: "non-ractor actor dependency",
+            reason: "non-kameo actor dependency",
         },
         ForbiddenFragment {
             text: "name = \"kompact\"",
-            reason: "non-ractor actor dependency",
+            reason: "non-kameo actor dependency",
         },
         ForbiddenFragment {
             text: "stakker =",
-            reason: "non-ractor actor dependency",
+            reason: "non-kameo actor dependency",
         },
         ForbiddenFragment {
             text: "name = \"stakker\"",
-            reason: "non-ractor actor dependency",
+            reason: "non-kameo actor dependency",
         },
     ];
 
@@ -414,7 +422,7 @@ fn ractor_is_the_only_actor_library_boundary() {
 
     assert!(
         violations.is_empty(),
-        "non-ractor actor boundary violations:\n{}",
+        "non-kameo actor boundary violations:\n{}",
         violations
             .iter()
             .map(SourceViolation::summary)

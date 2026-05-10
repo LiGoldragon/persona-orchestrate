@@ -17,5 +17,5 @@ Rules for work here:
   projections.
 - Lock files are compatibility artifacts while the workspace migrates; they are
   not durable truth and should not be regenerated as the long-term interface.
-- Runtime actors use direct `ractor`; do not add a second actor abstraction as a
+- Runtime actors use direct `kameo`; do not add a second actor abstraction as a
   prerequisite for mind work.

@@ -1,54 +1,66 @@
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use kameo::actor::{Actor, ActorRef};
+use kameo::error::Infallible;
+use kameo::message::{Context, Message};
 
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub(super) struct SubscriptionSupervisor;
-
-pub(super) struct State;
-
-pub(super) struct Arguments;
-
-#[allow(dead_code)]
-pub enum Message {
-    PostCommit {
-        trace: ActorTrace,
-        reply_port: RpcReplyPort<ActorTrace>,
-    },
+pub(super) struct SubscriptionSupervisorActor {
+    post_commit_count: u64,
 }
 
-#[ractor::async_trait]
-impl Actor for SubscriptionSupervisor {
-    type Msg = Message;
-    type State = State;
-    type Arguments = Arguments;
+#[derive(Clone)]
+pub(super) struct Arguments {
+    pub post_commit_count: u64,
+}
 
-    async fn pre_start(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        _arguments: Arguments,
-    ) -> std::result::Result<Self::State, ActorProcessingErr> {
-        Ok(State)
+impl Default for Arguments {
+    fn default() -> Self {
+        Self {
+            post_commit_count: 0,
+        }
     }
+}
+
+#[allow(dead_code)]
+pub struct PublishPostCommit {
+    pub trace: ActorTrace,
+}
+
+impl SubscriptionSupervisorActor {
+    fn new(arguments: Arguments) -> Self {
+        Self {
+            post_commit_count: arguments.post_commit_count,
+        }
+    }
+}
+
+impl Actor for SubscriptionSupervisorActor {
+    type Args = Arguments;
+    type Error = Infallible;
+
+    async fn on_start(
+        arguments: Self::Args,
+        _actor_reference: ActorRef<Self>,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self::new(arguments))
+    }
+}
+
+impl Message<PublishPostCommit> for SubscriptionSupervisorActor {
+    type Reply = ActorTrace;
 
     async fn handle(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        message: Message,
-        _state: &mut State,
-    ) -> std::result::Result<(), ActorProcessingErr> {
-        match message {
-            Message::PostCommit {
-                mut trace,
-                reply_port,
-            } => {
-                trace.record(
-                    ActorKind::SubscriptionSupervisorActor,
-                    TraceAction::MessageReceived,
-                );
-                trace.record(ActorKind::CommitBusActor, TraceAction::MessageReceived);
-                let _ = reply_port.send(trace);
-            }
-        }
-        Ok(())
+        &mut self,
+        message: PublishPostCommit,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.post_commit_count += 1;
+        let mut trace = message.trace;
+        trace.record(
+            ActorKind::SubscriptionSupervisorActor,
+            TraceAction::MessageReceived,
+        );
+        trace.record(ActorKind::CommitBusActor, TraceAction::MessageReceived);
+        trace
     }
 }

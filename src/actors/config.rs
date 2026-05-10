@@ -1,26 +1,23 @@
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use kameo::actor::{Actor, ActorRef};
+use kameo::error::Infallible;
+use kameo::message::{Context, Message};
 
 use crate::StoreLocation;
 
-pub(super) struct Config;
-
-pub struct State {
+pub(super) struct ConfigActor {
     store: StoreLocation,
 }
 
-pub struct Arguments {
-    pub store: StoreLocation,
+#[derive(Clone)]
+pub(super) struct Arguments {
+    pub(super) store: StoreLocation,
 }
 
 #[allow(dead_code)]
-pub enum Message {
-    StoreLocation {
-        reply_port: RpcReplyPort<StoreLocation>,
-    },
-}
+struct ReadStoreLocation;
 
-impl State {
-    pub fn new(store: StoreLocation) -> Self {
+impl ConfigActor {
+    fn new(store: StoreLocation) -> Self {
         Self { store }
     }
 
@@ -29,31 +26,26 @@ impl State {
     }
 }
 
-#[ractor::async_trait]
-impl Actor for Config {
-    type Msg = Message;
-    type State = State;
-    type Arguments = Arguments;
+impl Actor for ConfigActor {
+    type Args = Arguments;
+    type Error = Infallible;
 
-    async fn pre_start(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        arguments: Arguments,
-    ) -> std::result::Result<Self::State, ActorProcessingErr> {
-        Ok(State::new(arguments.store))
+    async fn on_start(
+        arguments: Self::Args,
+        _actor_reference: ActorRef<Self>,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self::new(arguments.store))
     }
+}
+
+impl Message<ReadStoreLocation> for ConfigActor {
+    type Reply = StoreLocation;
 
     async fn handle(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        message: Message,
-        state: &mut State,
-    ) -> std::result::Result<(), ActorProcessingErr> {
-        match message {
-            Message::StoreLocation { reply_port } => {
-                let _ = reply_port.send(state.store().clone());
-            }
-        }
-        Ok(())
+        &mut self,
+        _message: ReadStoreLocation,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.store().clone()
     }
 }

@@ -1,4 +1,6 @@
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use kameo::actor::{Actor, ActorRef};
+use kameo::error::Infallible;
+use kameo::message::{Context, Message};
 use signal_persona_mind::MindRequest;
 
 use crate::{MemoryState, MindEnvelope, StoreLocation};
@@ -6,31 +8,27 @@ use crate::{MemoryState, MindEnvelope, StoreLocation};
 use super::pipeline::PipelineReply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub(super) struct StoreSupervisor;
-
-pub struct State {
+pub(super) struct StoreSupervisorActor {
     memory: MemoryState,
 }
 
-pub struct Arguments {
-    pub store: StoreLocation,
+#[derive(Clone)]
+pub(super) struct Arguments {
+    pub(super) store: StoreLocation,
 }
 
-pub enum Message {
-    ApplyMemory {
-        envelope: MindEnvelope,
-        trace: ActorTrace,
-        reply_port: RpcReplyPort<PipelineReply>,
-    },
-    ReadMemory {
-        envelope: MindEnvelope,
-        trace: ActorTrace,
-        reply_port: RpcReplyPort<PipelineReply>,
-    },
+pub struct ApplyMemory {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
 }
 
-impl State {
-    pub fn new(store: StoreLocation) -> Self {
+pub struct ReadMemory {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
+impl StoreSupervisorActor {
+    fn new(store: StoreLocation) -> Self {
         Self {
             memory: MemoryState::open(store),
         }
@@ -60,6 +58,42 @@ impl State {
         let reply = self.memory.dispatch_envelope(envelope);
 
         PipelineReply::new(reply, trace)
+    }
+}
+
+impl Actor for StoreSupervisorActor {
+    type Args = Arguments;
+    type Error = Infallible;
+
+    async fn on_start(
+        arguments: Self::Args,
+        _actor_reference: ActorRef<Self>,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self::new(arguments.store))
+    }
+}
+
+impl Message<ApplyMemory> for StoreSupervisorActor {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: ApplyMemory,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.apply_memory(message.envelope, message.trace)
+    }
+}
+
+impl Message<ReadMemory> for StoreSupervisorActor {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: ReadMemory,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.read_memory(message.envelope, message.trace)
     }
 }
 
@@ -98,45 +132,5 @@ impl WriteTrace {
         }
         trace.record(ActorKind::ClockActor, TraceAction::MessageReceived);
         trace.record(ActorKind::SemaWriterActor, TraceAction::WriteIntentSent);
-    }
-}
-
-#[ractor::async_trait]
-impl Actor for StoreSupervisor {
-    type Msg = Message;
-    type State = State;
-    type Arguments = Arguments;
-
-    async fn pre_start(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        arguments: Arguments,
-    ) -> std::result::Result<Self::State, ActorProcessingErr> {
-        Ok(State::new(arguments.store))
-    }
-
-    async fn handle(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        message: Message,
-        state: &mut State,
-    ) -> std::result::Result<(), ActorProcessingErr> {
-        match message {
-            Message::ApplyMemory {
-                envelope,
-                trace,
-                reply_port,
-            } => {
-                let _ = reply_port.send(state.apply_memory(envelope, trace));
-            }
-            Message::ReadMemory {
-                envelope,
-                trace,
-                reply_port,
-            } => {
-                let _ = reply_port.send(state.read_memory(envelope, trace));
-            }
-        }
-        Ok(())
     }
 }

@@ -128,7 +128,7 @@ impl TraceEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, kameo::Reply)]
 pub struct ActorTrace {
     events: Vec<TraceEvent>,
 }

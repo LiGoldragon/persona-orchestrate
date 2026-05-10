@@ -1,25 +1,42 @@
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use kameo::actor::{Actor, ActorRef};
+use kameo::error::Infallible;
+use kameo::message::{Context, Message};
 use signal_persona_mind::MindReply;
 
 use super::pipeline::PipelineReply;
 use super::trace::{ActorKind, ActorTrace, TraceAction};
 
-pub(super) struct ReplySupervisor;
-
-pub(super) struct State;
-
-pub(super) struct Arguments;
-
-pub enum Message {
-    Shape {
-        reply: Option<MindReply>,
-        trace: ActorTrace,
-        reply_port: RpcReplyPort<PipelineReply>,
-    },
+pub(super) struct ReplySupervisorActor {
+    shaped_reply_count: u64,
 }
 
-impl State {
-    fn shape(&self, reply: Option<MindReply>, mut trace: ActorTrace) -> PipelineReply {
+#[derive(Clone)]
+pub(super) struct Arguments {
+    pub shaped_reply_count: u64,
+}
+
+impl Default for Arguments {
+    fn default() -> Self {
+        Self {
+            shaped_reply_count: 0,
+        }
+    }
+}
+
+pub struct ShapeReply {
+    pub reply: Option<MindReply>,
+    pub trace: ActorTrace,
+}
+
+impl ReplySupervisorActor {
+    fn new(arguments: Arguments) -> Self {
+        Self {
+            shaped_reply_count: arguments.shaped_reply_count,
+        }
+    }
+
+    fn shape(&mut self, reply: Option<MindReply>, mut trace: ActorTrace) -> PipelineReply {
+        self.shaped_reply_count += 1;
         trace.record(
             ActorKind::ReplySupervisorActor,
             TraceAction::MessageReceived,
@@ -37,35 +54,26 @@ impl State {
     }
 }
 
-#[ractor::async_trait]
-impl Actor for ReplySupervisor {
-    type Msg = Message;
-    type State = State;
-    type Arguments = Arguments;
+impl Actor for ReplySupervisorActor {
+    type Args = Arguments;
+    type Error = Infallible;
 
-    async fn pre_start(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        _arguments: Arguments,
-    ) -> std::result::Result<Self::State, ActorProcessingErr> {
-        Ok(State)
+    async fn on_start(
+        arguments: Self::Args,
+        _actor_reference: ActorRef<Self>,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self::new(arguments))
     }
+}
+
+impl Message<ShapeReply> for ReplySupervisorActor {
+    type Reply = PipelineReply;
 
     async fn handle(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        message: Message,
-        state: &mut State,
-    ) -> std::result::Result<(), ActorProcessingErr> {
-        match message {
-            Message::Shape {
-                reply,
-                trace,
-                reply_port,
-            } => {
-                let _ = reply_port.send(state.shape(reply, trace));
-            }
-        }
-        Ok(())
+        &mut self,
+        message: ShapeReply,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.shape(message.reply, message.trace)
     }
 }
