@@ -19,6 +19,12 @@ pub enum Error {
     #[error("signal frame: {0}")]
     SignalFrame(#[from] signal_core::FrameError),
 
+    #[error("signal persona mind: {0}")]
+    SignalPersonaMind(#[from] signal_persona_mind::Error),
+
+    #[error("nota: {0}")]
+    Nota(#[from] nota_codec::Error),
+
     #[error("unexpected signal frame: {0}")]
     UnexpectedFrame(&'static str),
 
@@ -27,4 +33,31 @@ pub enum Error {
 
     #[error("frame is larger than configured limit: {found} > {limit}")]
     FrameTooLarge { found: usize, limit: usize },
+
+    #[error("missing command line input")]
+    MissingCommandInput,
+
+    #[error("unknown command line option: {option}")]
+    UnknownCommandLineOption { option: String },
+
+    #[error("missing value for command line option: {option}")]
+    MissingCommandLineOptionValue { option: String },
+
+    #[error("invalid command line argument: {argument}")]
+    InvalidCommandLineArgument { argument: String },
+
+    #[error("missing required --socket path")]
+    MissingSocketPath,
+
+    #[error("missing required --actor name")]
+    MissingActorName,
+
+    #[error("missing required --store path")]
+    MissingStorePath,
+
+    #[error("expected one NOTA request argument, got {count}")]
+    WrongRequestArgumentCount { count: usize },
+
+    #[error("unsupported text reply: {reply}")]
+    UnsupportedTextReply { reply: &'static str },
 }

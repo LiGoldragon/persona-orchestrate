@@ -18,6 +18,7 @@ path = "src/main.rs"
 
 [dependencies]
 kameo               = { version = "0.20", default-features = false, features = ["macros", "tracing"] }
+nota-codec          = { git = "https://github.com/LiGoldragon/nota-codec.git", branch = "main" }
 signal-core         = { git = "https://github.com/LiGoldragon/signal-core.git" }
 signal-persona-mind = { git = "https://github.com/LiGoldragon/signal-persona-mind.git" }
 thiserror           = "2"

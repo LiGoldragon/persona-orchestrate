@@ -283,6 +283,7 @@ name = "persona-mind"
 version = "0.1.0"
 dependencies = [
  "kameo",
+ "nota-codec",
  "signal-core",
  "signal-persona-mind",
  "thiserror",

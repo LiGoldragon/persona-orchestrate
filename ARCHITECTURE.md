@@ -5,9 +5,10 @@ command-line mind.*
 
 > Status: the crate has a real Kameo runtime, an in-memory work graph reducer,
 > and a first Unix-socket Signal-frame daemon/client transport around
-> `MindRoot`. The `mind` binary, long-running daemon loop, durable `mind.redb`,
-> NOTA text projection, durable role storage, handoff flow, and activity flow
-> are the next foundational implementation wave.
+> `MindRoot`. The `mind` binary can run a daemon and submit NOTA role
+> claim/release/observation requests through that daemon. Durable `mind.redb`,
+> full NOTA coverage, durable role storage, handoff flow, and activity flow are
+> the next foundational implementation wave.
 
 ---
 
@@ -67,7 +68,9 @@ The crate exposes:
 | `MindFrameCodec` | Length-prefixed Signal frame codec used by client and daemon. |
 | `MindClient` | Thin local client that attaches Signal auth, submits one request frame, and reads one reply frame. |
 | `MindDaemon` | Bound one-shot daemon harness around `MindRoot`; reads actor identity from Signal auth before entering the root actor. |
-| `mind` binary | Future command-line mind; currently scaffold-only. |
+| `MindCommand` | Process-boundary command parser for daemon mode and one NOTA request submission. |
+| `MindTextRequest` / `MindTextReply` | Current NOTA projection for role claim/release/observation requests and replies. |
+| `mind` binary | Daemon-backed command-line mind for the implemented role-state slice. |
 
 The public protocol is not defined here. `signal-persona-mind` owns the
 request and reply records. `persona-mind` consumes those records and applies
@@ -76,10 +79,9 @@ state transitions.
 ## 2 · Command-line Mind
 
 The command-line mind is a thin client boundary over a long-lived daemon. The
-daemon owns the runtime path. The current crate has a one-shot Unix-socket
-daemon harness proving that Signal frames cross a process-style boundary before
-entering `MindRoot`; the production daemon loop and CLI text projection are not
-implemented yet.
+daemon owns the runtime path. The current crate has a Unix-socket daemon,
+Signal-frame transport, and a NOTA role-state projection. Full text coverage
+for every `signal-persona-mind` request/reply is not implemented yet.
 
 Command-line interfaces in this workspace interact with daemons. The
 command-line mind is not a one-shot state owner and should not reopen that
@@ -107,12 +109,10 @@ Process-boundary types should be small and data-bearing:
 | Type | Owns |
 |---|---|
 | `MindCommand` | argv, environment, exit rendering. |
-| `MindInput` | exactly-one-record rule. |
-| `MindTextDecoder` | NOTA decode diagnostics for `MindRequest`. |
-| `CallerIdentityResolver` | mapping process context to `ActorName` / role context. |
+| `MindTextRequest` | exactly-one-record rule for implemented role requests. |
+| `MindTextReply` | NOTA rendering for implemented role replies. |
+| `MindClient` | caller identity as Signal auth plus request/reply exchange. |
 | `MindDaemonEndpoint` | local daemon endpoint default and explicit override. |
-| `MindClient` | local daemon connection and signal-frame exchange. |
-| `MindTextEncoder` | NOTA rendering of `MindReply` / `Rejected`. |
 
 No request payload mints authority. Actor identity, timestamps, event sequence,
 operation IDs, and display IDs are infrastructure/store concerns.
@@ -307,6 +307,9 @@ This repo does not own:
   NOTA reply record.
 - The `mind` CLI sends Signal frames to the long-lived `persona-mind` daemon;
   it does not own `MindRoot`.
+- The `mind` CLI currently supports role claim, release, and observation text
+  records; unsupported text records fail at the text boundary instead of
+  inventing a second command language.
 - `MindClient` sends one length-prefixed Signal request frame to the daemon and
   expects one length-prefixed Signal reply frame back.
 - `MindClient` supplies caller identity through Signal auth, not through the
@@ -363,6 +366,8 @@ constraints:
 |---|---|
 | `mind_cli_accepts_one_nota_record_and_prints_one_nota_reply` | command surface shape. |
 | `mind_cli_uses_signal_persona_mind_types` | no duplicate CLI request enum. |
+| `mind_cli_sends_nota_role_claim_to_daemon` | CLI text enters the daemon path, not an in-process shortcut. |
+| `mind_cli_reads_role_observation_without_lock_files` | observation comes from mind state, not lock-file projection. |
 | `role_claim_reaches_claim_flow_and_commits` | claim requests are not routed to unsupported. |
 | `conflicting_claim_returns_typed_rejection` | conflicts are data. |
 | `role_observation_reads_claims_without_writer` | role observation is a read path. |
@@ -380,6 +385,7 @@ constraints:
 
 ```text
 src/lib.rs                 crate surface
+src/command.rs             daemon/client command-line boundary
 src/error.rs               typed Error enum and actor call errors
 src/envelope.rs            MindEnvelope actor identity wrapper
 src/actors/mod.rs          actor module exports
@@ -397,11 +403,13 @@ src/actors/trace.rs        actor trace witness types
 src/claim.rs               claim-scope reducer
 src/memory.rs              memory/work graph reducer
 src/role.rs                local role value
+src/text.rs                NOTA role-state projection for mind CLI
 src/transport.rs           Unix-socket Signal-frame client/daemon transport
-src/main.rs                scaffold CLI
+src/main.rs                command-line entry point
 tests/actor_topology.rs    manifest and actor-path truth tests
 tests/weird_actor_truth.rs static actor-discipline and weird runtime tests
 tests/daemon_wire.rs       Signal-frame daemon/client socket tests
+tests/cli.rs               daemon-backed mind CLI tests
 tests/memory.rs            memory/work reducer tests
 tests/smoke.rs             claim reducer tests
 ```

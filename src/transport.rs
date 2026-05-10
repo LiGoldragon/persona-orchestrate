@@ -189,6 +189,28 @@ impl BoundMindDaemon {
         reply
     }
 
+    pub async fn serve_count(self, count: usize) -> Result<Vec<MindReply>> {
+        let mut replies = Vec::with_capacity(count);
+        let result = async {
+            for _ in 0..count {
+                replies.push(self.serve_next().await?);
+            }
+            Ok(replies)
+        }
+        .await;
+        MindRoot::stop(self.root).await?;
+        self.endpoint.remove_socket()?;
+        result
+    }
+
+    pub async fn serve_forever(self) -> Result<()> {
+        loop {
+            if let Err(error) = self.serve_next().await {
+                eprintln!("mind daemon client error: {error}");
+            }
+        }
+    }
+
     async fn serve_next(&self) -> Result<MindReply> {
         let (mut stream, _address) = self.listener.accept().await?;
         let frame = self.codec.read_frame(&mut stream).await?;
