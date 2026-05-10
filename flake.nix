@@ -41,6 +41,10 @@
             inherit cargoArtifacts;
             cargoTestExtraArgs = "--test weird_actor_truth";
           });
+          daemon-wire = craneLib.cargoTest (commonArgs // {
+            inherit cargoArtifacts;
+            cargoTestExtraArgs = "--test daemon_wire";
+          });
           test-doc = craneLib.cargoTest (commonArgs // {
             inherit cargoArtifacts;
             cargoTestExtraArgs = "--doc";

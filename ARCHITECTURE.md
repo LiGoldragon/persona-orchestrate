@@ -3,10 +3,11 @@
 *Central Kameo actor system for Persona coordination, work memory, and the
 command-line mind.*
 
-> Status: the crate has a real Kameo runtime and an in-memory work graph
-> reducer. The `mind` binary and daemon are still scaffold-level. Durable
-> `mind.redb`, NOTA text projection, local daemon transport, and role/activity
-> flows are the next foundational implementation wave.
+> Status: the crate has a real Kameo runtime, an in-memory work graph reducer,
+> and a first Unix-socket Signal-frame daemon/client transport around
+> `MindRoot`. The `mind` binary, long-running daemon loop, durable `mind.redb`,
+> NOTA text projection, and role/activity flows are the next foundational
+> implementation wave.
 
 ---
 
@@ -62,6 +63,10 @@ The crate exposes:
 | `ClaimState` | Current in-memory claim reducer used by claim-scope tests. |
 | `actors::ActorManifest` | Runtime topology witness. |
 | `actors::ActorTrace` | Per-request path witness for architectural-truth tests. |
+| `MindDaemonEndpoint` | Unix-socket endpoint value for the local daemon transport. |
+| `MindFrameCodec` | Length-prefixed Signal frame codec used by client and daemon. |
+| `MindClient` | Thin local client that submits one Signal request frame and reads one reply frame. |
+| `MindDaemon` | Bound one-shot daemon harness around `MindRoot`; staging surface for the long-running daemon. |
 | `mind` binary | Future command-line mind; currently scaffold-only. |
 
 The public protocol is not defined here. `signal-persona-mind` owns the
@@ -71,8 +76,10 @@ state transitions.
 ## 2 · Command-line Mind
 
 The command-line mind is a thin client boundary over a long-lived daemon. The
-daemon owns the runtime path; tests may still use the in-process runtime until
-the daemon host is implemented.
+daemon owns the runtime path. The current crate has a one-shot Unix-socket
+daemon harness proving that Signal frames cross a process-style boundary before
+entering `MindRoot`; the production daemon loop and CLI text projection are not
+implemented yet.
 
 Command-line interfaces in this workspace interact with daemons. The
 command-line mind is not a one-shot state owner and should not reopen that
@@ -298,6 +305,11 @@ This repo does not own:
   NOTA reply record.
 - The `mind` CLI sends Signal frames to the long-lived `persona-mind` daemon;
   it does not own `MindRoot`.
+- `MindClient` sends one length-prefixed Signal request frame to the daemon and
+  expects one length-prefixed Signal reply frame back.
+- `MindDaemon` routes request frames through `MindRoot`; it does not construct
+  success replies without the actor path.
+- A missing daemon cannot produce a client reply.
 - The daemon owns `MindRoot` for its process lifetime.
 - The daemon owns `mind.redb`; the CLI never opens the database.
 - `MindRequest` and `MindReply` come from `signal-persona-mind`; the CLI does
@@ -347,6 +359,8 @@ constraints:
 | `conflicting_claim_returns_typed_rejection` | conflicts are data. |
 | `claim_commit_appends_activity` | activity is automatic. |
 | `query_ready_uses_reader_without_writer` | read path cannot mutate state. |
+| `daemon_round_trip_uses_signal_frames_over_socket` | one socket request/reply crosses the Signal-frame transport and reaches `MindRoot`. |
+| `client_cannot_reply_without_daemon_signal_frame` | clients cannot fabricate successful daemon replies. |
 | `mind_store_survives_process_restart` | durable `mind.redb` exists. |
 | `mind_runs_without_lock_file_projection` | lock files are outside the implementation. |
 | `beads_import_creates_alias_only` | no live BEADS bridge. |
@@ -372,9 +386,11 @@ src/actors/trace.rs        actor trace witness types
 src/claim.rs               claim-scope reducer
 src/memory.rs              memory/work graph reducer
 src/role.rs                local role value
+src/transport.rs           Unix-socket Signal-frame client/daemon transport
 src/main.rs                scaffold CLI
 tests/actor_topology.rs    manifest and actor-path truth tests
 tests/weird_actor_truth.rs static actor-discipline and weird runtime tests
+tests/daemon_wire.rs       Signal-frame daemon/client socket tests
 tests/memory.rs            memory/work reducer tests
 tests/smoke.rs             claim reducer tests
 ```

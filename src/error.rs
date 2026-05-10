@@ -12,4 +12,16 @@ pub enum Error {
 
     #[error("actor join: {0}")]
     ActorJoin(String),
+
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("signal frame: {0}")]
+    SignalFrame(#[from] signal_core::FrameError),
+
+    #[error("unexpected signal frame: {0}")]
+    UnexpectedFrame(&'static str),
+
+    #[error("frame is larger than configured limit: {found} > {limit}")]
+    FrameTooLarge { found: usize, limit: usize },
 }

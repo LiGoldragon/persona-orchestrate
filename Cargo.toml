@@ -18,9 +18,10 @@ path = "src/main.rs"
 
 [dependencies]
 kameo               = { version = "0.20", default-features = false, features = ["macros", "tracing"] }
+signal-core         = { git = "https://github.com/LiGoldragon/signal-core.git" }
 signal-persona-mind = { git = "https://github.com/LiGoldragon/signal-persona-mind.git" }
 thiserror           = "2"
-tokio               = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio               = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }
 
 [lints.rust]
 unsafe_code = "forbid"
