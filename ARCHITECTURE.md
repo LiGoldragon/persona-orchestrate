@@ -10,6 +10,13 @@ command-line mind.*
 > claim/release/handoff/observation, activity submission/query, and work-graph
 > opening/note/link/status/alias/query requests through that daemon.
 
+> **Scope.** "Sema" in this document is today's `sema` library (typed
+> storage kernel; rename pending → `sema-db`). The eventual `Sema` is
+> broader (universal medium for meaning); today's persona-mind is a
+> realization step on the eventually-self-hosting stack, built rightly
+> for the scope it serves now. See `~/primary/ESSENCE.md` §"Today and
+> eventually — different things, different names".
+
 ---
 
 ## 0 · TL;DR
