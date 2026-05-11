@@ -17,7 +17,7 @@ impl Fixture {
         }
     }
 
-    fn open_task(&self, title: &str) -> StableItemId {
+    fn open_task(&mut self, title: &str) -> StableItemId {
         match self.dispatch(MindRequest::Opening(Opening {
             kind: ItemKind::Task,
             priority: ItemPriority::Normal,
@@ -29,7 +29,7 @@ impl Fixture {
         }
     }
 
-    fn open_decision(&self, title: &str) -> StableItemId {
+    fn open_decision(&mut self, title: &str) -> StableItemId {
         match self.dispatch(MindRequest::Opening(Opening {
             kind: ItemKind::Decision,
             priority: ItemPriority::High,
@@ -41,7 +41,7 @@ impl Fixture {
         }
     }
 
-    fn add_note(&self, item: &StableItemId, body: &str) {
+    fn add_note(&mut self, item: &StableItemId, body: &str) {
         match self.dispatch(MindRequest::NoteSubmission(NoteSubmission {
             item: ItemReference::Stable(item.clone()),
             body: TextBody::new(body),
@@ -51,7 +51,7 @@ impl Fixture {
         }
     }
 
-    fn link_item(&self, source: &StableItemId, kind: EdgeKind, target: &StableItemId) {
+    fn link_item(&mut self, source: &StableItemId, kind: EdgeKind, target: &StableItemId) {
         match self.dispatch(MindRequest::Link(Link {
             source: ItemReference::Stable(source.clone()),
             kind,
@@ -63,7 +63,7 @@ impl Fixture {
         }
     }
 
-    fn link_report(&self, source: &StableItemId, path: &str) {
+    fn link_report(&mut self, source: &StableItemId, path: &str) {
         match self.dispatch(MindRequest::Link(Link {
             source: ItemReference::Stable(source.clone()),
             kind: EdgeKind::References,
@@ -75,7 +75,7 @@ impl Fixture {
         }
     }
 
-    fn change_status(&self, item: &StableItemId, status: ItemStatus) {
+    fn change_status(&mut self, item: &StableItemId, status: ItemStatus) {
         match self.dispatch(MindRequest::StatusChange(StatusChange {
             item: ItemReference::Stable(item.clone()),
             status,
@@ -86,7 +86,7 @@ impl Fixture {
         }
     }
 
-    fn add_alias(&self, item: &StableItemId, alias: &str) {
+    fn add_alias(&mut self, item: &StableItemId, alias: &str) {
         match self.dispatch(MindRequest::AliasAssignment(AliasAssignment {
             item: ItemReference::Stable(item.clone()),
             alias: ExternalAlias::new(alias),
@@ -96,7 +96,7 @@ impl Fixture {
         }
     }
 
-    fn query(&self, kind: QueryKind) -> View {
+    fn query(&mut self, kind: QueryKind) -> View {
         match self.dispatch(MindRequest::Query(Query {
             kind,
             limit: QueryLimit::new(20),
@@ -106,14 +106,14 @@ impl Fixture {
         }
     }
 
-    fn rejected(&self, request: MindRequest) -> RejectionReason {
+    fn rejected(&mut self, request: MindRequest) -> RejectionReason {
         match self.dispatch(request) {
             MindReply::Rejection(rejection) => rejection.reason,
             other => panic!("expected rejection, got {other:?}"),
         }
     }
 
-    fn dispatch(&self, request: MindRequest) -> MindReply {
+    fn dispatch(&mut self, request: MindRequest) -> MindReply {
         self.state
             .dispatch(request)
             .expect("memory fixture only sends memory requests")
@@ -122,7 +122,7 @@ impl Fixture {
 
 #[test]
 fn opening_item_persists_projection_and_event() {
-    let fixture = Fixture::new();
+    let mut fixture = Fixture::new();
     let item = fixture.open_task("Build typed mind graph");
     let view = fixture.query(QueryKind::ByItem(ItemReference::Stable(item.clone())));
 
@@ -139,7 +139,7 @@ fn opening_item_persists_projection_and_event() {
 
 #[test]
 fn adding_note_attaches_note_to_item_view() {
-    let fixture = Fixture::new();
+    let mut fixture = Fixture::new();
     let item = fixture.open_task("Record context");
 
     fixture.add_note(&item, "The note must be queryable from the item.");
@@ -160,7 +160,7 @@ fn adding_note_attaches_note_to_item_view() {
 
 #[test]
 fn depends_on_edge_controls_ready_and_blocked_views() {
-    let fixture = Fixture::new();
+    let mut fixture = Fixture::new();
     let blocker = fixture.open_task("Land Sema tables");
     let dependent = fixture.open_task("Migrate BEADS data");
 
@@ -183,7 +183,7 @@ fn depends_on_edge_controls_ready_and_blocked_views() {
 
 #[test]
 fn alias_assignment_resolves_imported_beads_identity() {
-    let fixture = Fixture::new();
+    let mut fixture = Fixture::new();
     let item = fixture.open_task("Replace bd");
 
     fixture.add_alias(&item, "primary-abc");
@@ -199,7 +199,7 @@ fn alias_assignment_resolves_imported_beads_identity() {
 
 #[test]
 fn report_reference_is_an_edge_not_an_item_kind() {
-    let fixture = Fixture::new();
+    let mut fixture = Fixture::new();
     let item = fixture.open_decision("Accept mind graph fold");
 
     fixture.link_report(&item, "reports/designer/98-critique.md");
@@ -220,7 +220,7 @@ fn report_reference_is_an_edge_not_an_item_kind() {
 
 #[test]
 fn unknown_item_rejects_mutations_and_queries() {
-    let fixture = Fixture::new();
+    let mut fixture = Fixture::new();
     let missing = StableItemId::new("missing-item");
 
     assert_eq!(
@@ -241,7 +241,7 @@ fn unknown_item_rejects_mutations_and_queries() {
 
 #[test]
 fn non_memory_requests_are_not_handled_by_the_memory_reducer() {
-    let fixture = Fixture::new();
+    let mut fixture = Fixture::new();
 
     assert!(
         fixture

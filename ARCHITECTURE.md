@@ -135,6 +135,10 @@ graph TB
     root --> dispatch[DispatchPhase]
     root --> domain[DomainPhase]
     root --> store[StoreSupervisor]
+    store --> kernel[StoreKernel]
+    store --> memory[MemoryStore]
+    store --> claims[ClaimStore]
+    store --> activity[ActivityStore]
     root --> views[ViewPhase]
     root --> subscriptions[SubscriptionSupervisor]
     root --> reply[ReplySupervisor]
@@ -149,8 +153,10 @@ graph LR
     ingress --> dispatch[DispatchPhase]
     dispatch --> domain[DomainPhase]
     domain --> store[StoreSupervisor]
-    store --> reducer[MemoryState reducer]
-    reducer --> store
+    store --> memory[MemoryStore]
+    memory --> kernel[StoreKernel]
+    kernel --> db[mind redb]
+    memory --> reducer[MemoryState reducer]
     store --> domain
     domain --> dispatch
     dispatch --> reply[ReplySupervisor]
@@ -179,16 +185,22 @@ lands.
 
 Current implementation:
 
-- `StoreSupervisor` owns `MemoryState`.
-- `StoreSupervisor` owns one `MindTables` handle over `mind.redb`.
-- `MindTables` schema v2 adds the typed `memory_graph` snapshot table.
-- Role claims use a `ClaimLedger` over the shared `MindTables` handle.
-- Activity uses an `ActivityLedger` over the shared `MindTables` handle.
-- `MemoryState` owns a private work graph loaded from the `memory_graph` Sema
-  table at daemon start.
-- Work/memory mutations append typed `Event` values and replace the typed Sema
-  graph snapshot before success replies are emitted.
-- Queries read the loaded work graph and produce typed `View` replies.
+- `StoreSupervisor` supervises `StoreKernel`, `MemoryStore`, `ClaimStore`, and
+  `ActivityStore`.
+- `StoreKernel` is the only actor that opens and owns the `MindTables` handle
+  over `mind.redb`.
+- `MindTables` schema v3 owns claims, activities, an activity slot cursor, and
+  the typed `memory_graph` snapshot table.
+- `ClaimStore` routes claim/release/handoff/observation work to `StoreKernel`,
+  where `ClaimLedger` performs the Sema reads and writes.
+- `ActivityStore` routes activity append/query work to `StoreKernel`, where
+  `ActivityLedger` performs the Sema reads and writes.
+- `MemoryStore` owns the private `MemoryState` reducer and commits accepted
+  work/memory snapshots through `StoreKernel`.
+- Work/memory mutations append typed `Event` values in the reducer, then
+  replace the typed Sema graph snapshot before success replies are emitted.
+- Queries read the loaded work graph through `MemoryStore` and produce typed
+  `View` replies.
 - Role claim, release, handoff, observation, activity submission, and activity
   query are routed through the actor path.
 
@@ -198,6 +210,7 @@ Destination:
 graph TB
     flow[domain flow actor] --> intent[typed write intent]
     intent --> writer[SemaWriter]
+    writer --> kernel[StoreKernel]
     writer --> ids[IdMint]
     writer --> clock[Clock]
     writer --> events[EventAppender]
@@ -219,6 +232,7 @@ Recommended tables:
 | `claims` | Active role claims and reasons. |
 | `handoffs` | Pending/completed handoff records. |
 | `activities` | Store-stamped role activity. |
+| `activity_next_slot` | Next activity slot cursor; avoids scanning activities on every append. |
 | `memory_graph` | Current typed graph snapshot for the first durable implementation wave. |
 | `items` | Work/memory/decision/question records. |
 | `notes` | Notes attached to items. |
@@ -333,6 +347,10 @@ This repo does not own:
 - A missing daemon cannot produce a client reply.
 - The daemon owns `MindRoot` for its process lifetime.
 - The daemon owns `mind.redb`; the CLI never opens the database.
+- `StoreKernel` is the only store actor that opens and owns the `MindTables`
+  handle for `mind.redb`.
+- `MemoryStore`, `ClaimStore`, and `ActivityStore` do not open separate
+  database handles; they ask `StoreKernel`.
 - Role claims, releases, handoffs, and observations read/write the mind-local
   Sema claims table in `mind.redb`.
 - Activity submissions and queries read/write the mind-local Sema activities
@@ -368,6 +386,8 @@ This repo does not own:
 - The root actor is the only bare Kameo spawn site.
 - State-bearing phases are actors or reducers owned by actors; no shared
   `Arc<Mutex<T>>` crosses actor boundaries.
+- The memory reducer is owned as mutable actor state, not hidden behind
+  `RefCell`.
 - Queries never send write intents.
 - Writes append typed events.
 - Durable truth lives in `mind.redb`; lock files are outside this
@@ -395,6 +415,8 @@ constraints:
 | `activity_submission_reaches_activity_flow_and_store_mints_time` | activity append goes through activity flow and store-minted time. |
 | `activity_query_reads_recent_activity_without_writer` | activity query is a read path with filters. |
 | `role_observation_includes_recent_activity` | role observation includes the recent activity projection. |
+| `mind_tables_open_stays_inside_the_store_actor_boundary` | `mind.redb` is opened only at the store actor boundary. |
+| `memory_state_cannot_hide_mutation_behind_refcell` | memory mutation is actor-owned mutable state, not interior mutability. |
 | `query_ready_uses_reader_without_writer` | read path cannot mutate state. |
 | `daemon_round_trip_uses_signal_frames_over_socket` | one socket request/reply crosses the Signal-frame transport and reaches `MindRoot`. |
 | `daemon_uses_signal_auth_for_actor_identity` | caller identity is derived from Signal auth before building `MindEnvelope`. |
@@ -417,7 +439,7 @@ src/actors/root.rs         MindRoot
 src/actors/ingress.rs      ingress supervisor and envelope preparation trace
 src/actors/dispatch.rs     request classification and flow selection
 src/actors/domain.rs       memory mutation domain path
-src/actors/store.rs        current state owner; reducer-backed read/write path
+src/actors/store.rs        store supervisor, store kernel, and narrow store actors
 src/actors/view.rs         query/read-view path
 src/actors/reply.rs        typed reply shaping path
 src/actors/config.rs       store-path configuration actor

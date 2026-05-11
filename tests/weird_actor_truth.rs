@@ -163,6 +163,14 @@ impl SourceFile {
         self.relative_name() == "src/actors/root.rs"
     }
 
+    fn is_store_kernel_source(&self) -> bool {
+        self.relative_name() == "src/actors/store/kernel.rs"
+    }
+
+    fn is_tables_source(&self) -> bool {
+        self.relative_name() == "src/tables.rs"
+    }
+
     fn is_this_guard_source(&self) -> bool {
         self.relative_name() == "tests/weird_actor_truth.rs"
     }
@@ -568,6 +576,61 @@ fn mind_source_cannot_project_lock_files_or_live_beads_backend() {
     assert!(
         violations.is_empty(),
         "legacy coordination backend violations:\n{}",
+        violations
+            .iter()
+            .map(SourceViolation::summary)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+#[test]
+fn mind_tables_open_stays_inside_the_store_kernel() {
+    let violations = SourceTree::new()
+        .source_files()
+        .into_iter()
+        .filter(|file| !file.is_store_kernel_source() && !file.is_tables_source())
+        .flat_map(|file| {
+            file.violations_for(&ForbiddenFragment {
+                text: "MindTables::open",
+                reason: "mind.redb must be opened only by the store kernel",
+            })
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        violations.is_empty(),
+        "mind table open boundary violations:\n{}",
+        violations
+            .iter()
+            .map(SourceViolation::summary)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+#[test]
+fn memory_state_cannot_hide_mutation_behind_refcell() {
+    let memory = SourceTree::new().file("src/memory.rs");
+    let forbidden_fragments = [
+        ForbiddenFragment {
+            text: "RefCell",
+            reason: "memory reducer is actor-owned mutable state, not interior mutability",
+        },
+        ForbiddenFragment {
+            text: "borrow_mut",
+            reason: "memory reducer is actor-owned mutable state, not interior mutability",
+        },
+    ];
+
+    let violations = forbidden_fragments
+        .iter()
+        .flat_map(|fragment| memory.violations_for(fragment))
+        .collect::<Vec<_>>();
+
+    assert!(
+        violations.is_empty(),
+        "memory interior mutability violations:\n{}",
         violations
             .iter()
             .map(SourceViolation::summary)

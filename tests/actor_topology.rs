@@ -99,6 +99,10 @@ fn topology_manifest_names_required_actor_planes() {
         ActorKind::DispatchPhase,
         ActorKind::DomainPhase,
         ActorKind::StoreSupervisor,
+        ActorKind::StoreKernel,
+        ActorKind::MemoryStore,
+        ActorKind::ClaimStore,
+        ActorKind::ActivityStore,
         ActorKind::ViewPhase,
         ActorKind::SubscriptionSupervisor,
         ActorKind::ReplySupervisor,
@@ -112,8 +116,12 @@ fn topology_manifest_names_required_actor_planes() {
     }
 
     assert_eq!(manifest.actor_count_for(ActorResidency::Root), 1);
-    assert!(manifest.actor_count_for(ActorResidency::LongLived) >= 8);
+    assert!(manifest.actor_count_for(ActorResidency::LongLived) >= 12);
     assert!(manifest.contains_edge(ActorKind::MindRoot, ActorKind::StoreSupervisor));
+    assert!(manifest.contains_edge(ActorKind::StoreSupervisor, ActorKind::StoreKernel));
+    assert!(manifest.contains_edge(ActorKind::StoreSupervisor, ActorKind::MemoryStore));
+    assert!(manifest.contains_edge(ActorKind::StoreSupervisor, ActorKind::ClaimStore));
+    assert!(manifest.contains_edge(ActorKind::StoreSupervisor, ActorKind::ActivityStore));
     assert!(manifest.contains_edge(ActorKind::ReplySupervisor, ActorKind::NotaReplyEncoder));
 }
 
@@ -145,6 +153,7 @@ async fn open_item_runs_through_kameo_write_path() {
         ActorKind::DomainPhase,
         ActorKind::ItemOpen,
         ActorKind::StoreSupervisor,
+        ActorKind::MemoryStore,
         ActorKind::SemaWriter,
         ActorKind::Commit,
         ActorKind::ReplySupervisor,
@@ -196,6 +205,7 @@ async fn query_path_uses_read_actor_without_writer() {
         ActorKind::ViewPhase,
         ActorKind::ReadyWorkView,
         ActorKind::StoreSupervisor,
+        ActorKind::MemoryStore,
         ActorKind::SemaReader,
         ActorKind::QueryResultShaper,
         ActorKind::ReplySupervisor,
@@ -228,6 +238,7 @@ async fn role_claim_reaches_claim_flow_and_commits() {
         ActorKind::DomainPhase,
         ActorKind::ClaimSupervisor,
         ActorKind::StoreSupervisor,
+        ActorKind::ClaimStore,
         ActorKind::SemaWriter,
         ActorKind::Commit,
         ActorKind::ReplySupervisor,
@@ -363,6 +374,7 @@ async fn role_handoff_moves_claim_between_roles() {
         ActorKind::DomainPhase,
         ActorKind::ClaimSupervisor,
         ActorKind::StoreSupervisor,
+        ActorKind::ClaimStore,
         ActorKind::SemaWriter,
         ActorKind::Commit,
         ActorKind::ReplySupervisor,
@@ -445,6 +457,7 @@ async fn activity_submission_reaches_activity_flow_and_store_mints_time() {
         ActorKind::ActivityFlow,
         ActorKind::DomainPhase,
         ActorKind::StoreSupervisor,
+        ActorKind::ActivityStore,
         ActorKind::Clock,
         ActorKind::SemaWriter,
         ActorKind::Commit,

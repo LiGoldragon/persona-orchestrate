@@ -4,10 +4,9 @@
 //! `sema` kernel; this module keeps the graph reducer honest while
 //! durable tables land.
 
-use std::cell::RefCell;
 use std::path::Path;
 
-use crate::{MindEnvelope, MindTables, Result};
+use crate::MindEnvelope;
 use signal_persona_mind::{
     ActorName, AliasAddedEvent, AliasAssignment, DisplayId, Edge, EdgeAddedEvent, EdgeKind,
     EdgeTarget, Event, EventHeader, EventSeq, ExternalAlias, Item, ItemKind, ItemOpenedEvent,
@@ -18,7 +17,7 @@ use signal_persona_mind::{
 
 pub struct MemoryState {
     store: StoreLocation,
-    graph: RefCell<MemoryGraph>,
+    graph: MemoryGraph,
 }
 
 impl MemoryState {
@@ -29,9 +28,7 @@ impl MemoryState {
     pub(crate) fn open_with_graph(store: StoreLocation, graph: Option<MemoryGraph>) -> Self {
         Self {
             store,
-            graph: RefCell::new(
-                graph.unwrap_or_else(|| MemoryGraph::new(ActorName::new("persona-mind"))),
-            ),
+            graph: graph.unwrap_or_else(|| MemoryGraph::new(ActorName::new("persona-mind"))),
         }
     }
 
@@ -39,32 +36,49 @@ impl MemoryState {
         &self.store
     }
 
-    pub fn dispatch(&self, request: MindRequest) -> Option<MindReply> {
-        self.graph.borrow_mut().dispatch(request)
+    pub fn dispatch(&mut self, request: MindRequest) -> Option<MindReply> {
+        self.graph.dispatch(request)
     }
 
-    pub fn dispatch_envelope(&self, envelope: MindEnvelope) -> Option<MindReply> {
-        self.graph.borrow_mut().dispatch_envelope(envelope)
+    pub fn dispatch_envelope(&mut self, envelope: MindEnvelope) -> Option<MindReply> {
+        self.graph.dispatch_envelope(envelope)
     }
 
-    pub(crate) fn dispatch_envelope_durably(
-        &self,
-        envelope: MindEnvelope,
-        tables: &MindTables,
-    ) -> Result<Option<MindReply>> {
+    pub(crate) fn stage_envelope(&self, envelope: MindEnvelope) -> MemoryStage {
         let write = MemoryWrite::from_request(envelope.request());
-        if !write.persists() {
-            return Ok(self.dispatch_envelope(envelope));
-        }
-
-        let mut next_graph = self.graph.borrow().clone();
+        let mut next_graph = self.graph.clone();
         let reply = next_graph.dispatch_envelope(envelope);
-        if MemoryReply::new(&reply).committed() {
-            tables.replace_memory_graph(&next_graph)?;
-            self.graph.replace(next_graph);
-        }
+        let graph =
+            (write.persists() && MemoryReply::new(&reply).committed()).then_some(next_graph);
 
-        Ok(reply)
+        MemoryStage::new(reply, graph)
+    }
+
+    pub(crate) fn replace_graph(&mut self, graph: MemoryGraph) {
+        self.graph = graph;
+    }
+}
+
+pub(crate) struct MemoryStage {
+    reply: Option<MindReply>,
+    graph: Option<MemoryGraph>,
+}
+
+impl MemoryStage {
+    fn new(reply: Option<MindReply>, graph: Option<MemoryGraph>) -> Self {
+        Self { reply, graph }
+    }
+
+    pub(crate) fn reply(&self) -> Option<MindReply> {
+        self.reply.clone()
+    }
+
+    pub(crate) fn graph(&self) -> Option<&MemoryGraph> {
+        self.graph.as_ref()
+    }
+
+    pub(crate) fn into_graph(self) -> Option<MemoryGraph> {
+        self.graph
     }
 }
 

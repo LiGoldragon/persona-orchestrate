@@ -6,12 +6,14 @@ use signal_persona_mind::{Activity, RoleName, ScopeReason, ScopeReference, Times
 use crate::{MemoryGraph, Result, StoreLocation};
 
 const MIND_SCHEMA: Schema = Schema {
-    version: SchemaVersion::new(2),
+    version: SchemaVersion::new(3),
 };
 
 const CLAIMS: Table<&'static str, StoredClaim> = Table::new("claims");
 const ACTIVITIES: Table<u64, StoredActivity> = Table::new("activities");
+const ACTIVITY_NEXT_SLOT: Table<&'static str, u64> = Table::new("activity_next_slot");
 const MEMORY_GRAPH: Table<&'static str, MemoryGraph> = Table::new("memory_graph");
+const ACTIVITY_NEXT_SLOT_KEY: &str = "next";
 const MEMORY_GRAPH_KEY: &str = "current";
 
 pub struct MindTables {
@@ -81,6 +83,7 @@ impl MindTables {
         database.write(|transaction| {
             CLAIMS.ensure(transaction)?;
             ACTIVITIES.ensure(transaction)?;
+            ACTIVITY_NEXT_SLOT.ensure(transaction)?;
             MEMORY_GRAPH.ensure(transaction)?;
             Ok(())
         })?;
@@ -122,10 +125,11 @@ impl MindTables {
         reason: ScopeReason,
     ) -> Result<StoredActivity> {
         let slot = self.next_activity_slot()?;
-        let stamped_at = Clock::new().timestamp()?;
-        let activity = StoredActivity::new(slot, role, scope, reason, stamped_at);
+        let stamped_at = StoreClock::system().timestamp()?;
+        let activity = StoredActivity::new(slot.value(), role, scope, reason, stamped_at);
         self.database.write(|transaction| {
-            ACTIVITIES.insert(transaction, slot, &activity)?;
+            ACTIVITIES.insert(transaction, slot.value(), &activity)?;
+            ACTIVITY_NEXT_SLOT.insert(transaction, ACTIVITY_NEXT_SLOT_KEY, &slot.next_value())?;
             Ok(())
         })?;
         Ok(activity)
@@ -155,26 +159,56 @@ impl MindTables {
         Ok(())
     }
 
-    fn next_activity_slot(&self) -> Result<u64> {
-        let records = self.activity_records()?;
-        Ok(records
-            .iter()
-            .map(|activity| activity.slot)
-            .max()
-            .map_or(0, |slot| slot + 1))
+    fn next_activity_slot(&self) -> Result<ActivitySlot> {
+        let stored = self
+            .database
+            .read(|transaction| ACTIVITY_NEXT_SLOT.get(transaction, ACTIVITY_NEXT_SLOT_KEY))?;
+        match stored {
+            Some(next_slot) => Ok(ActivitySlot::new(next_slot)),
+            None => Ok(ActivitySlot::after_records(&self.activity_records()?)),
+        }
     }
 }
 
-struct Clock;
+struct ActivitySlot {
+    value: u64,
+}
 
-impl Clock {
-    fn new() -> Self {
-        Self
+impl ActivitySlot {
+    fn new(value: u64) -> Self {
+        Self { value }
+    }
+
+    fn after_records(records: &[StoredActivity]) -> Self {
+        let value = records
+            .iter()
+            .map(|activity| activity.slot)
+            .max()
+            .map_or(0, |slot| slot + 1);
+        Self { value }
+    }
+
+    fn value(&self) -> u64 {
+        self.value
+    }
+
+    fn next_value(&self) -> u64 {
+        self.value + 1
+    }
+}
+
+struct StoreClock {
+    epoch: SystemTime,
+}
+
+impl StoreClock {
+    fn system() -> Self {
+        Self { epoch: UNIX_EPOCH }
     }
 
     fn timestamp(&self) -> Result<TimestampNanos> {
         let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)?
+            .duration_since(self.epoch)?
             .as_nanos()
             .min(u64::MAX as u128) as u64;
         Ok(TimestampNanos::new(nanos))
