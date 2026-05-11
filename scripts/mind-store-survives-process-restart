@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mind="${MIND_BIN:?MIND_BIN must point at the mind binary}"
+workspace="$(mktemp -d)"
+socket="$workspace/mind.sock"
+store="$workspace/mind.redb"
+
+start_daemon() {
+  rm -f "$socket"
+  "$mind" daemon --socket "$socket" --store "$store" >"$workspace/daemon-$1.log" 2>&1 &
+  daemon="$!"
+  for _ in $(seq 1 100); do
+    [[ -S "$socket" ]] && break
+    sleep 0.05
+  done
+  test -S "$socket"
+}
+
+stop_daemon() {
+  kill "$daemon" 2>/dev/null || true
+  wait "$daemon" 2>/dev/null || true
+}
+
+daemon=""
+trap '[[ -n "${daemon:-}" ]] && kill "$daemon" 2>/dev/null || true' EXIT
+
+start_daemon first
+"$mind" \
+  --socket "$socket" \
+  --actor operator \
+  '(RoleClaim Operator [(Path "/git/github.com/LiGoldragon/persona-mind")] "survives restart")' \
+  >"$workspace/first-claim.out"
+stop_daemon
+
+start_daemon second
+"$mind" \
+  --socket "$socket" \
+  --actor operator \
+  '(RoleObservation)' \
+  >"$workspace/second-observe.out"
+stop_daemon
+
+grep -Fq '(RoleStatus Operator [(ClaimEntry (Path "/git/github.com/LiGoldragon/persona-mind") "survives restart")]' \
+  "$workspace/second-observe.out"

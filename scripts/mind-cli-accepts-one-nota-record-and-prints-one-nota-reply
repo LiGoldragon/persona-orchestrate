@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mind="${MIND_BIN:?MIND_BIN must point at the mind binary}"
+workspace="$(mktemp -d)"
+socket="$workspace/mind.sock"
+store="$workspace/mind.redb"
+
+"$mind" daemon --socket "$socket" --store "$store" >"$workspace/daemon.log" 2>&1 &
+daemon="$!"
+trap 'kill "$daemon" 2>/dev/null || true' EXIT
+
+for _ in $(seq 1 100); do
+  [[ -S "$socket" ]] && break
+  sleep 0.05
+done
+test -S "$socket"
+
+"$mind" \
+  --socket "$socket" \
+  --actor operator \
+  '(RoleClaim Operator [(Path "/git/github.com/LiGoldragon/persona-mind")] "one record")' \
+  >"$workspace/reply.out"
+
+test "$(wc -l <"$workspace/reply.out")" -eq 1
+grep -Fq '(ClaimAcceptance Operator [(Path "/git/github.com/LiGoldragon/persona-mind")])' \
+  "$workspace/reply.out"
+
+set +e
+"$mind" \
+  --socket "$socket" \
+  --actor operator \
+  '(RoleObservation)' \
+  '(RoleObservation)' \
+  >"$workspace/two-records.out" \
+  2>"$workspace/two-records.err"
+status="$?"
+set -e
+
+if [[ "$status" -eq 0 ]]; then
+  echo "mind accepted more than one NOTA request record" >&2
+  exit 1
+fi
+
+grep -Fq "WrongRequestArgumentCount { count: 2 }" "$workspace/two-records.err"

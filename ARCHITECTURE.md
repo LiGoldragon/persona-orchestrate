@@ -331,6 +331,9 @@ This repo does not own:
 
 - The `mind` CLI accepts exactly one NOTA request record and prints exactly one
   NOTA reply record.
+- CLI constraint tests run the production `mind` binary through Nix.
+- CLI constraint tests start a real daemon when the constraint requires
+  runtime state.
 - The `mind` CLI sends Signal frames to the long-lived `persona-mind` daemon;
   it does not own `MindRoot`.
 - The `mind` CLI supports role claim/release/handoff/observation, activity
@@ -400,7 +403,11 @@ constraints:
 
 | Test | Proves |
 |---|---|
-| `mind_cli_accepts_one_nota_record_and_prints_one_nota_reply` | command surface shape. |
+| `mind-cli-accepts-one-nota-record-and-prints-one-nota-reply` | command surface shape through the production binary. |
+| `mind-cli-sends-signal-frames-to-long-lived-daemon` | two CLI invocations share daemon-owned state through Signal frames. |
+| `mind-cli-opens-and-queries-work-item-through-daemon` | work-graph text crosses the daemon path and returns typed NOTA replies. |
+| `mind-store-survives-process-restart` | durable state survives daemon restart on the same `mind.redb`. |
+| `mind_cli_accepts_one_nota_record_and_prints_one_nota_reply` | command surface shape in Rust fixtures. |
 | `mind_cli_uses_signal_persona_mind_types` | no duplicate CLI request enum. |
 | `mind_cli_sends_nota_role_claim_to_daemon` | CLI text enters the daemon path, not an in-process shortcut. |
 | `mind_cli_reads_role_observation_without_lock_files` | observation comes from mind state, not lock-file projection. |

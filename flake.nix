@@ -11,8 +11,16 @@
     crane.url = "github:ipetkov/crane";
   };
 
-  outputs = { self, nixpkgs, flake-utils, fenix, crane }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      fenix,
+      crane,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = import nixpkgs { inherit system; };
         toolchain = fenix.packages.${system}.stable.withComponents [
@@ -25,31 +33,56 @@
         ];
         craneLib = (crane.mkLib pkgs).overrideToolchain toolchain;
         src = craneLib.cleanCargoSource ./.;
-        commonArgs = { inherit src; strictDeps = true; };
+        commonArgs = {
+          inherit src;
+          strictDeps = true;
+        };
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+        mindConstraintCheck =
+          name: script:
+          pkgs.runCommand name { } ''
+            set -euo pipefail
+
+            export MIND_BIN=${self.packages.${system}.default}/bin/mind
+            ${pkgs.bash}/bin/bash ${script}
+
+            touch "$out"
+          '';
       in
       {
-        packages.default = craneLib.buildPackage (commonArgs // {
-          inherit cargoArtifacts;
-          meta.mainProgram = "mind";
-        });
+        packages.default = craneLib.buildPackage (
+          commonArgs
+          // {
+            inherit cargoArtifacts;
+            meta.mainProgram = "mind";
+          }
+        );
         checks = {
           default = craneLib.cargoTest (commonArgs // { inherit cargoArtifacts; });
           build = craneLib.cargoBuild (commonArgs // { inherit cargoArtifacts; });
           test = craneLib.cargoTest (commonArgs // { inherit cargoArtifacts; });
-          weird-actor-truth = craneLib.cargoTest (commonArgs // {
-            inherit cargoArtifacts;
-            cargoTestExtraArgs = "--test weird_actor_truth";
-          });
-          daemon-wire = craneLib.cargoTest (commonArgs // {
-            inherit cargoArtifacts;
-            cargoTestExtraArgs = "--test daemon_wire";
-          });
-          cli = craneLib.cargoTest (commonArgs // {
-            inherit cargoArtifacts;
-            cargoTestExtraArgs = "--test cli";
-          });
-          cli-binary = pkgs.runCommand "mind-cli-binary" {} ''
+          weird-actor-truth = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test weird_actor_truth";
+            }
+          );
+          daemon-wire = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test daemon_wire";
+            }
+          );
+          cli = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test cli";
+            }
+          );
+          cli-binary = pkgs.runCommand "mind-cli-binary" { } ''
             set -euo pipefail
 
             workspace="$(mktemp -d)"
@@ -88,19 +121,32 @@
 
             touch "$out"
           '';
-          test-doc = craneLib.cargoTest (commonArgs // {
-            inherit cargoArtifacts;
-            cargoTestExtraArgs = "--doc";
-          });
-          doc = craneLib.cargoDoc (commonArgs // {
-            inherit cargoArtifacts;
-            RUSTDOCFLAGS = "-D warnings";
-          });
+          mind-cli-accepts-one-nota-record-and-prints-one-nota-reply = mindConstraintCheck "mind-cli-accepts-one-nota-record-and-prints-one-nota-reply" ./scripts/mind-cli-accepts-one-nota-record-and-prints-one-nota-reply;
+          mind-cli-sends-signal-frames-to-long-lived-daemon = mindConstraintCheck "mind-cli-sends-signal-frames-to-long-lived-daemon" ./scripts/mind-cli-sends-signal-frames-to-long-lived-daemon;
+          mind-cli-opens-and-queries-work-item-through-daemon = mindConstraintCheck "mind-cli-opens-and-queries-work-item-through-daemon" ./scripts/mind-cli-opens-and-queries-work-item-through-daemon;
+          mind-store-survives-process-restart = mindConstraintCheck "mind-store-survives-process-restart" ./scripts/mind-store-survives-process-restart;
+          test-doc = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--doc";
+            }
+          );
+          doc = craneLib.cargoDoc (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              RUSTDOCFLAGS = "-D warnings";
+            }
+          );
           fmt = craneLib.cargoFmt { inherit src; };
-          clippy = craneLib.cargoClippy (commonArgs // {
-            inherit cargoArtifacts;
-            cargoClippyExtraArgs = "--all-targets -- -D warnings";
-          });
+          clippy = craneLib.cargoClippy (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoClippyExtraArgs = "--all-targets -- -D warnings";
+            }
+          );
         };
         apps.default = {
           type = "app";
@@ -108,8 +154,13 @@
         };
         devShells.default = pkgs.mkShell {
           name = "persona-mind";
-          packages = [ pkgs.jujutsu pkgs.pkg-config toolchain ];
+          packages = [
+            pkgs.jujutsu
+            pkgs.pkg-config
+            toolchain
+          ];
         };
         formatter = pkgs.nixfmt;
-      });
+      }
+    );
 }
