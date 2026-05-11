@@ -7,7 +7,7 @@ use crate::{MindEnvelope, Result as CrateResult};
 
 use super::pipeline::PipelineReply;
 use super::store;
-use super::trace::{ActorKind, ActorTrace, TraceAction};
+use super::trace::{ActorTrace, TraceAction, TraceNode};
 
 pub(super) struct ViewPhase {
     store: ActorRef<store::StoreSupervisor>,
@@ -43,11 +43,11 @@ impl ViewPhase {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
-        trace.record(ActorKind::ViewPhase, TraceAction::MessageReceived);
-        trace.record(ActorKind::QuerySupervisor, TraceAction::MessageReceived);
-        trace.record(ActorKind::QueryPlanner, TraceAction::MessageReceived);
+        trace.record(TraceNode::VIEW_PHASE, TraceAction::MessageReceived);
+        trace.record(TraceNode::QUERY_SUPERVISOR, TraceAction::MessageReceived);
+        trace.record(TraceNode::QUERY_PLANNER, TraceAction::MessageReceived);
         QueryOperation::from_request(envelope.request()).record_into(&mut trace);
-        trace.record(ActorKind::GraphTraversal, TraceAction::MessageReceived);
+        trace.record(TraceNode::GRAPH_TRAVERSAL, TraceAction::MessageReceived);
 
         let mut reply = self
             .store
@@ -56,7 +56,7 @@ impl ViewPhase {
             .map_err(|error| crate::Error::ActorCall(error.to_string()))?;
         reply
             .trace
-            .record(ActorKind::QueryResultShaper, TraceAction::MessageReceived);
+            .record(TraceNode::QUERY_RESULT_SHAPER, TraceAction::MessageReceived);
         Ok(reply)
     }
 
@@ -65,8 +65,8 @@ impl ViewPhase {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
-        trace.record(ActorKind::ViewPhase, TraceAction::MessageReceived);
-        trace.record(ActorKind::RoleSnapshotView, TraceAction::MessageReceived);
+        trace.record(TraceNode::VIEW_PHASE, TraceAction::MessageReceived);
+        trace.record(TraceNode::ROLE_SNAPSHOT_VIEW, TraceAction::MessageReceived);
 
         self.store
             .ask(store::ReadClaims { envelope, trace })
@@ -79,8 +79,11 @@ impl ViewPhase {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
-        trace.record(ActorKind::ViewPhase, TraceAction::MessageReceived);
-        trace.record(ActorKind::RecentActivityView, TraceAction::MessageReceived);
+        trace.record(TraceNode::VIEW_PHASE, TraceAction::MessageReceived);
+        trace.record(
+            TraceNode::RECENT_ACTIVITY_VIEW,
+            TraceAction::MessageReceived,
+        );
 
         self.store
             .ask(store::ReadActivity { envelope, trace })
@@ -147,23 +150,23 @@ impl Message<ReadActivity> for ViewPhase {
 }
 
 struct QueryOperation {
-    actor: ActorKind,
+    actor: TraceNode,
 }
 
 impl QueryOperation {
     fn from_request(request: &MindRequest) -> Self {
         let actor = match request {
             MindRequest::Query(query) => match &query.kind {
-                QueryKind::Ready => ActorKind::ReadyWorkView,
-                QueryKind::Blocked => ActorKind::BlockedWorkView,
-                QueryKind::RecentEvents => ActorKind::RecentActivityView,
+                QueryKind::Ready => TraceNode::READY_WORK_VIEW,
+                QueryKind::Blocked => TraceNode::BLOCKED_WORK_VIEW,
+                QueryKind::RecentEvents => TraceNode::RECENT_ACTIVITY_VIEW,
                 QueryKind::Open
                 | QueryKind::ByItem(_)
                 | QueryKind::ByKind(_)
                 | QueryKind::ByStatus(_)
-                | QueryKind::ByAlias(_) => ActorKind::GraphTraversal,
+                | QueryKind::ByAlias(_) => TraceNode::GRAPH_TRAVERSAL,
             },
-            _ => ActorKind::ErrorShaper,
+            _ => TraceNode::ERROR_SHAPER,
         };
         Self { actor }
     }

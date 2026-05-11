@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use persona_mind::actors::{ActorKind, ActorManifest, ActorResidency, TraceAction};
+use persona_mind::actors::{ActorManifest, ActorResidency, TraceAction, TraceNode};
 use persona_mind::{
     ActorRef, MindEnvelope, MindRoot, MindRootArguments, MindRootReply, StoreLocation,
     SubmitEnvelope,
@@ -93,36 +93,36 @@ fn topology_manifest_names_required_actor_planes() {
     let manifest = ActorManifest::persona_mind_phase_one();
 
     for actor in [
-        ActorKind::MindRoot,
-        ActorKind::Config,
-        ActorKind::IngressPhase,
-        ActorKind::DispatchPhase,
-        ActorKind::DomainPhase,
-        ActorKind::StoreSupervisor,
-        ActorKind::StoreKernel,
-        ActorKind::MemoryStore,
-        ActorKind::ClaimStore,
-        ActorKind::ActivityStore,
-        ActorKind::ViewPhase,
-        ActorKind::SubscriptionSupervisor,
-        ActorKind::ReplySupervisor,
-        ActorKind::SemaWriter,
-        ActorKind::SemaReader,
-        ActorKind::IdMint,
-        ActorKind::ReadyWorkView,
-        ActorKind::NotaReplyEncoder,
+        TraceNode::MIND_ROOT,
+        TraceNode::CONFIG,
+        TraceNode::INGRESS_PHASE,
+        TraceNode::DISPATCH_PHASE,
+        TraceNode::DOMAIN_PHASE,
+        TraceNode::STORE_SUPERVISOR,
+        TraceNode::STORE_KERNEL,
+        TraceNode::MEMORY_STORE,
+        TraceNode::CLAIM_STORE,
+        TraceNode::ACTIVITY_STORE,
+        TraceNode::VIEW_PHASE,
+        TraceNode::SUBSCRIPTION_SUPERVISOR,
+        TraceNode::REPLY_SUPERVISOR,
+        TraceNode::SEMA_WRITER,
+        TraceNode::SEMA_READER,
+        TraceNode::ID_MINT,
+        TraceNode::READY_WORK_VIEW,
+        TraceNode::NOTA_REPLY_ENCODER,
     ] {
         assert!(manifest.contains(actor), "missing {}", actor.label());
     }
 
     assert_eq!(manifest.actor_count_for(ActorResidency::Root), 1);
     assert!(manifest.actor_count_for(ActorResidency::LongLived) >= 12);
-    assert!(manifest.contains_edge(ActorKind::MindRoot, ActorKind::StoreSupervisor));
-    assert!(manifest.contains_edge(ActorKind::StoreSupervisor, ActorKind::StoreKernel));
-    assert!(manifest.contains_edge(ActorKind::StoreSupervisor, ActorKind::MemoryStore));
-    assert!(manifest.contains_edge(ActorKind::StoreSupervisor, ActorKind::ClaimStore));
-    assert!(manifest.contains_edge(ActorKind::StoreSupervisor, ActorKind::ActivityStore));
-    assert!(manifest.contains_edge(ActorKind::ReplySupervisor, ActorKind::NotaReplyEncoder));
+    assert!(manifest.contains_edge(TraceNode::MIND_ROOT, TraceNode::STORE_SUPERVISOR));
+    assert!(manifest.contains_edge(TraceNode::STORE_SUPERVISOR, TraceNode::STORE_KERNEL));
+    assert!(manifest.contains_edge(TraceNode::STORE_SUPERVISOR, TraceNode::MEMORY_STORE));
+    assert!(manifest.contains_edge(TraceNode::STORE_SUPERVISOR, TraceNode::CLAIM_STORE));
+    assert!(manifest.contains_edge(TraceNode::STORE_SUPERVISOR, TraceNode::ACTIVITY_STORE));
+    assert!(manifest.contains_edge(TraceNode::REPLY_SUPERVISOR, TraceNode::NOTA_REPLY_ENCODER));
 }
 
 #[tokio::test]
@@ -146,28 +146,28 @@ async fn open_item_runs_through_kameo_write_path() {
         ActorName::new("operator-assistant")
     );
     assert!(response.trace().contains_ordered(&[
-        ActorKind::MindRoot,
-        ActorKind::IngressPhase,
-        ActorKind::DispatchPhase,
-        ActorKind::MemoryFlow,
-        ActorKind::DomainPhase,
-        ActorKind::ItemOpen,
-        ActorKind::StoreSupervisor,
-        ActorKind::MemoryStore,
-        ActorKind::SemaWriter,
-        ActorKind::Commit,
-        ActorKind::ReplySupervisor,
-        ActorKind::MindRoot,
+        TraceNode::MIND_ROOT,
+        TraceNode::INGRESS_PHASE,
+        TraceNode::DISPATCH_PHASE,
+        TraceNode::MEMORY_FLOW,
+        TraceNode::DOMAIN_PHASE,
+        TraceNode::ITEM_OPEN,
+        TraceNode::STORE_SUPERVISOR,
+        TraceNode::MEMORY_STORE,
+        TraceNode::SEMA_WRITER,
+        TraceNode::COMMIT,
+        TraceNode::REPLY_SUPERVISOR,
+        TraceNode::MIND_ROOT,
     ]));
     assert!(
         response
             .trace()
-            .contains_action(ActorKind::SemaWriter, TraceAction::WriteIntentSent)
+            .contains_action(TraceNode::SEMA_WRITER, TraceAction::WriteIntentSent)
     );
     assert!(
         response
             .trace()
-            .contains_action(ActorKind::Commit, TraceAction::CommitCompleted)
+            .contains_action(TraceNode::COMMIT, TraceAction::CommitCompleted)
     );
 
     fixture.stop().await;
@@ -198,20 +198,20 @@ async fn query_path_uses_read_actor_without_writer() {
 
     assert_eq!(view.items.len(), 1);
     assert!(response.trace().contains_ordered(&[
-        ActorKind::MindRoot,
-        ActorKind::IngressPhase,
-        ActorKind::DispatchPhase,
-        ActorKind::QueryFlow,
-        ActorKind::ViewPhase,
-        ActorKind::ReadyWorkView,
-        ActorKind::StoreSupervisor,
-        ActorKind::MemoryStore,
-        ActorKind::SemaReader,
-        ActorKind::QueryResultShaper,
-        ActorKind::ReplySupervisor,
+        TraceNode::MIND_ROOT,
+        TraceNode::INGRESS_PHASE,
+        TraceNode::DISPATCH_PHASE,
+        TraceNode::QUERY_FLOW,
+        TraceNode::VIEW_PHASE,
+        TraceNode::READY_WORK_VIEW,
+        TraceNode::STORE_SUPERVISOR,
+        TraceNode::MEMORY_STORE,
+        TraceNode::SEMA_READER,
+        TraceNode::QUERY_RESULT_SHAPER,
+        TraceNode::REPLY_SUPERVISOR,
     ]));
-    assert!(response.trace().contains(ActorKind::SemaReader));
-    assert!(!response.trace().contains(ActorKind::SemaWriter));
+    assert!(response.trace().contains(TraceNode::SEMA_READER));
+    assert!(!response.trace().contains(TraceNode::SEMA_WRITER));
 
     fixture.stop().await;
 }
@@ -231,17 +231,17 @@ async fn role_claim_reaches_claim_flow_and_commits() {
     assert_eq!(acceptance.role, RoleName::Operator);
     assert_eq!(acceptance.scopes.len(), 1);
     assert!(response.trace().contains_ordered(&[
-        ActorKind::MindRoot,
-        ActorKind::IngressPhase,
-        ActorKind::DispatchPhase,
-        ActorKind::ClaimFlow,
-        ActorKind::DomainPhase,
-        ActorKind::ClaimSupervisor,
-        ActorKind::StoreSupervisor,
-        ActorKind::ClaimStore,
-        ActorKind::SemaWriter,
-        ActorKind::Commit,
-        ActorKind::ReplySupervisor,
+        TraceNode::MIND_ROOT,
+        TraceNode::INGRESS_PHASE,
+        TraceNode::DISPATCH_PHASE,
+        TraceNode::CLAIM_FLOW,
+        TraceNode::DOMAIN_PHASE,
+        TraceNode::CLAIM_SUPERVISOR,
+        TraceNode::STORE_SUPERVISOR,
+        TraceNode::CLAIM_STORE,
+        TraceNode::SEMA_WRITER,
+        TraceNode::COMMIT,
+        TraceNode::REPLY_SUPERVISOR,
     ]));
 
     fixture.stop().await;
@@ -270,8 +270,8 @@ async fn conflicting_claim_returns_typed_rejection() {
     assert_eq!(rejection.role, RoleName::Designer);
     assert_eq!(rejection.conflicts.len(), 1);
     assert_eq!(rejection.conflicts[0].held_by, RoleName::Operator);
-    assert!(response.trace().contains(ActorKind::ClaimFlow));
-    assert!(response.trace().contains(ActorKind::Commit));
+    assert!(response.trace().contains(TraceNode::CLAIM_FLOW));
+    assert!(response.trace().contains(TraceNode::COMMIT));
 
     fixture.stop().await;
 }
@@ -298,9 +298,9 @@ async fn role_observation_reads_claims_without_writer() {
         .expect("operator status exists");
 
     assert_eq!(operator.claims.len(), 1);
-    assert!(response.trace().contains(ActorKind::RoleSnapshotView));
-    assert!(response.trace().contains(ActorKind::SemaReader));
-    assert!(!response.trace().contains(ActorKind::SemaWriter));
+    assert!(response.trace().contains(TraceNode::ROLE_SNAPSHOT_VIEW));
+    assert!(response.trace().contains(TraceNode::SEMA_READER));
+    assert!(!response.trace().contains(TraceNode::SEMA_WRITER));
 
     fixture.stop().await;
 }
@@ -367,17 +367,17 @@ async fn role_handoff_moves_claim_between_roles() {
     assert_eq!(acceptance.to, RoleName::Designer);
     assert_eq!(acceptance.scopes, vec![scope.clone()]);
     assert!(response.trace().contains_ordered(&[
-        ActorKind::MindRoot,
-        ActorKind::IngressPhase,
-        ActorKind::DispatchPhase,
-        ActorKind::HandoffFlow,
-        ActorKind::DomainPhase,
-        ActorKind::ClaimSupervisor,
-        ActorKind::StoreSupervisor,
-        ActorKind::ClaimStore,
-        ActorKind::SemaWriter,
-        ActorKind::Commit,
-        ActorKind::ReplySupervisor,
+        TraceNode::MIND_ROOT,
+        TraceNode::INGRESS_PHASE,
+        TraceNode::DISPATCH_PHASE,
+        TraceNode::HANDOFF_FLOW,
+        TraceNode::DOMAIN_PHASE,
+        TraceNode::CLAIM_SUPERVISOR,
+        TraceNode::STORE_SUPERVISOR,
+        TraceNode::CLAIM_STORE,
+        TraceNode::SEMA_WRITER,
+        TraceNode::COMMIT,
+        TraceNode::REPLY_SUPERVISOR,
     ]));
 
     let observed = fixture
@@ -424,8 +424,8 @@ async fn handoff_without_source_claim_returns_typed_rejection() {
 
     assert_eq!(rejection.from, RoleName::Operator);
     assert_eq!(rejection.to, RoleName::Designer);
-    assert!(response.trace().contains(ActorKind::HandoffFlow));
-    assert!(response.trace().contains(ActorKind::Commit));
+    assert!(response.trace().contains(TraceNode::HANDOFF_FLOW));
+    assert!(response.trace().contains(TraceNode::COMMIT));
 
     fixture.stop().await;
 }
@@ -451,17 +451,17 @@ async fn activity_submission_reaches_activity_flow_and_store_mints_time() {
 
     assert_eq!(acknowledgment.slot, 0);
     assert!(response.trace().contains_ordered(&[
-        ActorKind::MindRoot,
-        ActorKind::IngressPhase,
-        ActorKind::DispatchPhase,
-        ActorKind::ActivityFlow,
-        ActorKind::DomainPhase,
-        ActorKind::StoreSupervisor,
-        ActorKind::ActivityStore,
-        ActorKind::Clock,
-        ActorKind::SemaWriter,
-        ActorKind::Commit,
-        ActorKind::ReplySupervisor,
+        TraceNode::MIND_ROOT,
+        TraceNode::INGRESS_PHASE,
+        TraceNode::DISPATCH_PHASE,
+        TraceNode::ACTIVITY_FLOW,
+        TraceNode::DOMAIN_PHASE,
+        TraceNode::STORE_SUPERVISOR,
+        TraceNode::ACTIVITY_STORE,
+        TraceNode::CLOCK,
+        TraceNode::SEMA_WRITER,
+        TraceNode::COMMIT,
+        TraceNode::REPLY_SUPERVISOR,
     ]));
 
     fixture.stop().await;
@@ -550,9 +550,9 @@ async fn activity_query_reads_recent_activity_without_writer() {
         ScopeReason::from_text("second activity").expect("reason")
     );
     assert!(list.records[0].stamped_at.value() > 0);
-    assert!(response.trace().contains(ActorKind::RecentActivityView));
-    assert!(response.trace().contains(ActorKind::SemaReader));
-    assert!(!response.trace().contains(ActorKind::SemaWriter));
+    assert!(response.trace().contains(TraceNode::RECENT_ACTIVITY_VIEW));
+    assert!(response.trace().contains(TraceNode::SEMA_READER));
+    assert!(!response.trace().contains(TraceNode::SEMA_WRITER));
 
     fixture.stop().await;
 }

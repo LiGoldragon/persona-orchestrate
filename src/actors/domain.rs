@@ -7,7 +7,7 @@ use crate::{MindEnvelope, Result as CrateResult};
 
 use super::pipeline::PipelineReply;
 use super::store;
-use super::trace::{ActorKind, ActorTrace, TraceAction};
+use super::trace::{ActorTrace, TraceAction, TraceNode};
 
 pub(super) struct DomainPhase {
     store: ActorRef<store::StoreSupervisor>,
@@ -48,9 +48,9 @@ impl DomainPhase {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
-        trace.record(ActorKind::DomainPhase, TraceAction::MessageReceived);
+        trace.record(TraceNode::DOMAIN_PHASE, TraceAction::MessageReceived);
         trace.record(
-            ActorKind::MemoryGraphSupervisor,
+            TraceNode::MEMORY_GRAPH_SUPERVISOR,
             TraceAction::MessageReceived,
         );
         MemoryOperation::from_request(envelope.request()).record_into(&mut trace);
@@ -66,8 +66,8 @@ impl DomainPhase {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
-        trace.record(ActorKind::DomainPhase, TraceAction::MessageReceived);
-        trace.record(ActorKind::ClaimSupervisor, TraceAction::MessageReceived);
+        trace.record(TraceNode::DOMAIN_PHASE, TraceAction::MessageReceived);
+        trace.record(TraceNode::CLAIM_SUPERVISOR, TraceAction::MessageReceived);
 
         self.store
             .ask(store::ApplyClaim { envelope, trace })
@@ -80,9 +80,9 @@ impl DomainPhase {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
-        trace.record(ActorKind::DomainPhase, TraceAction::MessageReceived);
-        trace.record(ActorKind::HandoffFlow, TraceAction::MessageReceived);
-        trace.record(ActorKind::ClaimSupervisor, TraceAction::MessageReceived);
+        trace.record(TraceNode::DOMAIN_PHASE, TraceAction::MessageReceived);
+        trace.record(TraceNode::HANDOFF_FLOW, TraceAction::MessageReceived);
+        trace.record(TraceNode::CLAIM_SUPERVISOR, TraceAction::MessageReceived);
 
         self.store
             .ask(store::ApplyHandoff { envelope, trace })
@@ -95,9 +95,9 @@ impl DomainPhase {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
-        trace.record(ActorKind::DomainPhase, TraceAction::MessageReceived);
-        trace.record(ActorKind::ActivityFlow, TraceAction::MessageReceived);
-        trace.record(ActorKind::ActivityAppender, TraceAction::MessageReceived);
+        trace.record(TraceNode::DOMAIN_PHASE, TraceAction::MessageReceived);
+        trace.record(TraceNode::ACTIVITY_FLOW, TraceAction::MessageReceived);
+        trace.record(TraceNode::ACTIVITY_APPENDER, TraceAction::MessageReceived);
 
         self.store
             .ask(store::ApplyActivity { envelope, trace })
@@ -179,18 +179,18 @@ impl Message<ApplyActivity> for DomainPhase {
 }
 
 struct MemoryOperation {
-    actor: ActorKind,
+    actor: TraceNode,
 }
 
 impl MemoryOperation {
     fn from_request(request: &MindRequest) -> Self {
         let actor = match request {
-            MindRequest::Opening(_) => ActorKind::ItemOpen,
-            MindRequest::NoteSubmission(_) => ActorKind::NoteAdd,
-            MindRequest::Link(_) => ActorKind::Link,
-            MindRequest::StatusChange(_) => ActorKind::StatusChange,
-            MindRequest::AliasAssignment(_) => ActorKind::AliasAdd,
-            _ => ActorKind::ErrorShaper,
+            MindRequest::Opening(_) => TraceNode::ITEM_OPEN,
+            MindRequest::NoteSubmission(_) => TraceNode::NOTE_ADD,
+            MindRequest::Link(_) => TraceNode::LINK,
+            MindRequest::StatusChange(_) => TraceNode::STATUS_CHANGE,
+            MindRequest::AliasAssignment(_) => TraceNode::ALIAS_ADD,
+            _ => TraceNode::ERROR_SHAPER,
         };
         Self { actor }
     }

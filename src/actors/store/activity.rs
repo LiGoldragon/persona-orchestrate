@@ -5,7 +5,7 @@ use crate::MindEnvelope;
 
 use super::kernel::{ApplyActivity, KernelReply, ReadActivity, StoreKernel};
 use super::persistence::PersistenceRejection;
-use super::{ActorKind, ActorTrace, PipelineReply, TraceAction};
+use super::{ActorTrace, PipelineReply, TraceAction, TraceNode};
 
 #[derive(Clone)]
 pub(super) struct Arguments {
@@ -34,9 +34,9 @@ impl ActivityStore {
     }
 
     async fn apply(&self, envelope: MindEnvelope, mut trace: ActorTrace) -> PipelineReply {
-        trace.record(ActorKind::ActivityStore, TraceAction::MessageReceived);
-        trace.record(ActorKind::Clock, TraceAction::MessageReceived);
-        trace.record(ActorKind::SemaWriter, TraceAction::WriteIntentSent);
+        trace.record(TraceNode::ACTIVITY_STORE, TraceAction::MessageReceived);
+        trace.record(TraceNode::CLOCK, TraceAction::MessageReceived);
+        trace.record(TraceNode::SEMA_WRITER, TraceAction::WriteIntentSent);
 
         let reply = self
             .kernel
@@ -46,15 +46,18 @@ impl ActivityStore {
             .map(KernelReply::into_reply)
             .unwrap_or_else(|error| Some(PersistenceRejection::reply(error)));
 
-        trace.record(ActorKind::ActivityAppender, TraceAction::MessageReceived);
-        trace.record(ActorKind::Commit, TraceAction::CommitCompleted);
+        trace.record(TraceNode::ACTIVITY_APPENDER, TraceAction::MessageReceived);
+        trace.record(TraceNode::COMMIT, TraceAction::CommitCompleted);
         PipelineReply::new(reply, trace)
     }
 
     async fn read(&self, envelope: MindEnvelope, mut trace: ActorTrace) -> PipelineReply {
-        trace.record(ActorKind::ActivityStore, TraceAction::MessageReceived);
-        trace.record(ActorKind::SemaReader, TraceAction::MessageReceived);
-        trace.record(ActorKind::RecentActivityView, TraceAction::MessageReceived);
+        trace.record(TraceNode::ACTIVITY_STORE, TraceAction::MessageReceived);
+        trace.record(TraceNode::SEMA_READER, TraceAction::MessageReceived);
+        trace.record(
+            TraceNode::RECENT_ACTIVITY_VIEW,
+            TraceAction::MessageReceived,
+        );
 
         let reply = self
             .kernel

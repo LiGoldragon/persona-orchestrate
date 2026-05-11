@@ -5,7 +5,7 @@ use signal_persona_mind::MindReply;
 
 use crate::{Error, MindEnvelope, Result, StoreLocation};
 
-use super::trace::{ActorKind, ActorTrace, TraceAction};
+use super::trace::{ActorTrace, TraceAction, TraceNode};
 use super::{config, dispatch, domain, ingress, reply, store, subscription, view};
 
 pub struct MindRoot {
@@ -68,7 +68,7 @@ impl MindRoot {
 
     async fn submit(&self, envelope: MindEnvelope) -> Result<RootReply> {
         let mut trace = ActorTrace::new();
-        trace.record(ActorKind::MindRoot, TraceAction::MessageReceived);
+        trace.record(TraceNode::MIND_ROOT, TraceAction::MessageReceived);
 
         let mut pipeline = self
             .ingress
@@ -77,7 +77,7 @@ impl MindRoot {
             .map_err(|error| Error::ActorCall(error.to_string()))?;
         pipeline
             .trace
-            .record(ActorKind::MindRoot, TraceAction::MessageReplied);
+            .record(TraceNode::MIND_ROOT, TraceAction::MessageReplied);
 
         Ok(RootReply::new(pipeline.reply, pipeline.trace))
     }
@@ -171,8 +171,8 @@ impl Message<SubmitEnvelope> for MindRoot {
             Ok(reply) => reply,
             Err(_error) => {
                 let mut trace = ActorTrace::new();
-                trace.record(ActorKind::MindRoot, TraceAction::MessageReceived);
-                trace.record(ActorKind::ErrorShaper, TraceAction::MessageReplied);
+                trace.record(TraceNode::MIND_ROOT, TraceAction::MessageReceived);
+                trace.record(TraceNode::ERROR_SHAPER, TraceAction::MessageReplied);
                 RootReply::new(None, trace)
             }
         }

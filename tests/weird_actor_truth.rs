@@ -3,7 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use persona_mind::actors::{ActorKind, ActorManifest, ActorResidency};
+use persona_mind::actors::{ActorManifest, ActorResidency, TraceNode};
 use persona_mind::{
     ActorRef, MindEnvelope, MindRoot, MindRootArguments, MindRootReply, StoreLocation,
     SubmitEnvelope,
@@ -663,7 +663,7 @@ fn trace_phase_actor_cannot_float_without_parent_edge() {
 }
 
 #[test]
-fn actor_kind_labels_cannot_collide() {
+fn trace_node_labels_cannot_collide() {
     let manifest = ActorManifest::persona_mind_phase_one();
     let mut labels = HashSet::new();
     let duplicate_labels = manifest
@@ -696,11 +696,11 @@ async fn role_claim_cannot_bypass_claim_flow_or_writer() {
         .await;
 
     assert!(response.reply().is_some());
-    assert!(response.trace().contains(ActorKind::ClaimFlow));
-    assert!(response.trace().contains(ActorKind::ClaimSupervisor));
-    assert!(response.trace().contains(ActorKind::SemaWriter));
-    assert!(response.trace().contains(ActorKind::Commit));
-    assert!(response.trace().contains(ActorKind::NotaReplyEncoder));
+    assert!(response.trace().contains(TraceNode::CLAIM_FLOW));
+    assert!(response.trace().contains(TraceNode::CLAIM_SUPERVISOR));
+    assert!(response.trace().contains(TraceNode::SEMA_WRITER));
+    assert!(response.trace().contains(TraceNode::COMMIT));
+    assert!(response.trace().contains(TraceNode::NOTA_REPLY_ENCODER));
 
     fixture.stop().await;
 }

@@ -164,7 +164,7 @@ graph LR
     root --> caller
 ```
 
-`ActorKind` currently names both real Kameo actors and trace phases. The
+`TraceNode` currently names both real Kameo actors and trace phases. The
 manifest distinguishes them through residency. That is acceptable as a staging
 tool, but stateful phases must graduate into real actors as implementation
 lands.

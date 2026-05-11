@@ -4,7 +4,7 @@ use kameo::message::{Context, Message};
 use signal_persona_mind::MindReply;
 
 use super::pipeline::PipelineReply;
-use super::trace::{ActorKind, ActorTrace, TraceAction};
+use super::trace::{ActorTrace, TraceAction, TraceNode};
 
 pub(super) struct ReplySupervisor {
     shaped_reply_count: u64,
@@ -29,14 +29,14 @@ impl ReplySupervisor {
 
     fn shape(&mut self, reply: Option<MindReply>, mut trace: ActorTrace) -> PipelineReply {
         self.shaped_reply_count += 1;
-        trace.record(ActorKind::ReplySupervisor, TraceAction::MessageReceived);
+        trace.record(TraceNode::REPLY_SUPERVISOR, TraceAction::MessageReceived);
         match reply {
             Some(reply) => {
-                trace.record(ActorKind::NotaReplyEncoder, TraceAction::MessageReplied);
+                trace.record(TraceNode::NOTA_REPLY_ENCODER, TraceAction::MessageReplied);
                 PipelineReply::new(Some(reply), trace)
             }
             None => {
-                trace.record(ActorKind::ErrorShaper, TraceAction::MessageReplied);
+                trace.record(TraceNode::ERROR_SHAPER, TraceAction::MessageReplied);
                 PipelineReply::new(None, trace)
             }
         }

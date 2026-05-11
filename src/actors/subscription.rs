@@ -2,7 +2,7 @@ use kameo::actor::{Actor, ActorRef};
 use kameo::error::Infallible;
 use kameo::message::{Context, Message};
 
-use super::trace::{ActorKind, ActorTrace, TraceAction};
+use super::trace::{ActorTrace, TraceAction, TraceNode};
 
 pub(super) struct SubscriptionSupervisor {
     post_commit_count: u64,
@@ -49,10 +49,10 @@ impl Message<PublishPostCommit> for SubscriptionSupervisor {
         self.post_commit_count += 1;
         let mut trace = message.trace;
         trace.record(
-            ActorKind::SubscriptionSupervisor,
+            TraceNode::SUBSCRIPTION_SUPERVISOR,
             TraceAction::MessageReceived,
         );
-        trace.record(ActorKind::CommitBus, TraceAction::MessageReceived);
+        trace.record(TraceNode::COMMIT_BUS, TraceAction::MessageReceived);
         trace
     }
 }

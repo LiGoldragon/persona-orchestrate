@@ -1,109 +1,65 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ActorKind {
-    MindRoot,
-    Config,
-    IngressPhase,
-    RequestSession,
-    NotaDecoder,
-    CallerIdentityResolver,
-    EnvelopeBuilder,
-    DispatchPhase,
-    RequestDispatcher,
-    ClaimFlow,
-    HandoffFlow,
-    ActivityFlow,
-    MemoryFlow,
-    QueryFlow,
-    DomainPhase,
-    ClaimSupervisor,
-    MemoryGraphSupervisor,
-    QuerySupervisor,
-    ItemOpen,
-    NoteAdd,
-    Link,
-    StatusChange,
-    AliasAdd,
-    QueryPlanner,
-    GraphTraversal,
-    QueryResultShaper,
-    StoreSupervisor,
-    StoreKernel,
-    MemoryStore,
-    ClaimStore,
-    ActivityStore,
-    SemaWriter,
-    SemaReader,
-    IdMint,
-    Clock,
-    EventAppender,
-    ActivityAppender,
-    Commit,
-    ViewPhase,
-    RoleSnapshotView,
-    ReadyWorkView,
-    BlockedWorkView,
-    RecentActivityView,
-    SubscriptionSupervisor,
-    CommitBus,
-    Subscriber,
-    ReplySupervisor,
-    NotaReplyEncoder,
-    ErrorShaper,
+pub struct TraceNode {
+    label: &'static str,
 }
 
-impl ActorKind {
+impl TraceNode {
+    pub const MIND_ROOT: Self = Self::new("MindRoot");
+    pub const CONFIG: Self = Self::new("Config");
+    pub const INGRESS_PHASE: Self = Self::new("IngressPhase");
+    pub const REQUEST_SESSION: Self = Self::new("RequestSession");
+    pub const NOTA_DECODER: Self = Self::new("NotaDecoder");
+    pub const CALLER_IDENTITY_RESOLVER: Self = Self::new("CallerIdentityResolver");
+    pub const ENVELOPE_BUILDER: Self = Self::new("EnvelopeBuilder");
+    pub const DISPATCH_PHASE: Self = Self::new("DispatchPhase");
+    pub const REQUEST_DISPATCHER: Self = Self::new("RequestDispatcher");
+    pub const CLAIM_FLOW: Self = Self::new("ClaimFlow");
+    pub const HANDOFF_FLOW: Self = Self::new("HandoffFlow");
+    pub const ACTIVITY_FLOW: Self = Self::new("ActivityFlow");
+    pub const MEMORY_FLOW: Self = Self::new("MemoryFlow");
+    pub const QUERY_FLOW: Self = Self::new("QueryFlow");
+    pub const DOMAIN_PHASE: Self = Self::new("DomainPhase");
+    pub const CLAIM_SUPERVISOR: Self = Self::new("ClaimSupervisor");
+    pub const MEMORY_GRAPH_SUPERVISOR: Self = Self::new("MemoryGraphSupervisor");
+    pub const QUERY_SUPERVISOR: Self = Self::new("QuerySupervisor");
+    pub const ITEM_OPEN: Self = Self::new("ItemOpen");
+    pub const NOTE_ADD: Self = Self::new("NoteAdd");
+    pub const LINK: Self = Self::new("Link");
+    pub const STATUS_CHANGE: Self = Self::new("StatusChange");
+    pub const ALIAS_ADD: Self = Self::new("AliasAdd");
+    pub const QUERY_PLANNER: Self = Self::new("QueryPlanner");
+    pub const GRAPH_TRAVERSAL: Self = Self::new("GraphTraversal");
+    pub const QUERY_RESULT_SHAPER: Self = Self::new("QueryResultShaper");
+    pub const STORE_SUPERVISOR: Self = Self::new("StoreSupervisor");
+    pub const STORE_KERNEL: Self = Self::new("StoreKernel");
+    pub const MEMORY_STORE: Self = Self::new("MemoryStore");
+    pub const CLAIM_STORE: Self = Self::new("ClaimStore");
+    pub const ACTIVITY_STORE: Self = Self::new("ActivityStore");
+    pub const SEMA_WRITER: Self = Self::new("SemaWriter");
+    pub const SEMA_READER: Self = Self::new("SemaReader");
+    pub const ID_MINT: Self = Self::new("IdMint");
+    pub const CLOCK: Self = Self::new("Clock");
+    pub const EVENT_APPENDER: Self = Self::new("EventAppender");
+    pub const ACTIVITY_APPENDER: Self = Self::new("ActivityAppender");
+    pub const COMMIT: Self = Self::new("Commit");
+    pub const VIEW_PHASE: Self = Self::new("ViewPhase");
+    pub const ROLE_SNAPSHOT_VIEW: Self = Self::new("RoleSnapshotView");
+    pub const READY_WORK_VIEW: Self = Self::new("ReadyWorkView");
+    pub const BLOCKED_WORK_VIEW: Self = Self::new("BlockedWorkView");
+    pub const RECENT_ACTIVITY_VIEW: Self = Self::new("RecentActivityView");
+    pub const SUBSCRIPTION_SUPERVISOR: Self = Self::new("SubscriptionSupervisor");
+    pub const COMMIT_BUS: Self = Self::new("CommitBus");
+    pub const SUBSCRIBER: Self = Self::new("Subscriber");
+    pub const REPLY_SUPERVISOR: Self = Self::new("ReplySupervisor");
+    pub const NOTA_REPLY_ENCODER: Self = Self::new("NotaReplyEncoder");
+    pub const ERROR_SHAPER: Self = Self::new("ErrorShaper");
+
+    pub const fn new(label: &'static str) -> Self {
+        Self { label }
+    }
+
     pub fn label(self) -> &'static str {
-        match self {
-            ActorKind::MindRoot => "MindRoot",
-            ActorKind::Config => "Config",
-            ActorKind::IngressPhase => "IngressPhase",
-            ActorKind::RequestSession => "RequestSession",
-            ActorKind::NotaDecoder => "NotaDecoder",
-            ActorKind::CallerIdentityResolver => "CallerIdentityResolver",
-            ActorKind::EnvelopeBuilder => "EnvelopeBuilder",
-            ActorKind::DispatchPhase => "DispatchPhase",
-            ActorKind::RequestDispatcher => "RequestDispatcher",
-            ActorKind::ClaimFlow => "ClaimFlow",
-            ActorKind::HandoffFlow => "HandoffFlow",
-            ActorKind::ActivityFlow => "ActivityFlow",
-            ActorKind::MemoryFlow => "MemoryFlow",
-            ActorKind::QueryFlow => "QueryFlow",
-            ActorKind::DomainPhase => "DomainPhase",
-            ActorKind::ClaimSupervisor => "ClaimSupervisor",
-            ActorKind::MemoryGraphSupervisor => "MemoryGraphSupervisor",
-            ActorKind::QuerySupervisor => "QuerySupervisor",
-            ActorKind::ItemOpen => "ItemOpen",
-            ActorKind::NoteAdd => "NoteAdd",
-            ActorKind::Link => "Link",
-            ActorKind::StatusChange => "StatusChange",
-            ActorKind::AliasAdd => "AliasAdd",
-            ActorKind::QueryPlanner => "QueryPlanner",
-            ActorKind::GraphTraversal => "GraphTraversal",
-            ActorKind::QueryResultShaper => "QueryResultShaper",
-            ActorKind::StoreSupervisor => "StoreSupervisor",
-            ActorKind::StoreKernel => "StoreKernel",
-            ActorKind::MemoryStore => "MemoryStore",
-            ActorKind::ClaimStore => "ClaimStore",
-            ActorKind::ActivityStore => "ActivityStore",
-            ActorKind::SemaWriter => "SemaWriter",
-            ActorKind::SemaReader => "SemaReader",
-            ActorKind::IdMint => "IdMint",
-            ActorKind::Clock => "Clock",
-            ActorKind::EventAppender => "EventAppender",
-            ActorKind::ActivityAppender => "ActivityAppender",
-            ActorKind::Commit => "Commit",
-            ActorKind::ViewPhase => "ViewPhase",
-            ActorKind::RoleSnapshotView => "RoleSnapshotView",
-            ActorKind::ReadyWorkView => "ReadyWorkView",
-            ActorKind::BlockedWorkView => "BlockedWorkView",
-            ActorKind::RecentActivityView => "RecentActivityView",
-            ActorKind::SubscriptionSupervisor => "SubscriptionSupervisor",
-            ActorKind::CommitBus => "CommitBus",
-            ActorKind::Subscriber => "Subscriber",
-            ActorKind::ReplySupervisor => "ReplySupervisor",
-            ActorKind::NotaReplyEncoder => "NotaReplyEncoder",
-            ActorKind::ErrorShaper => "ErrorShaper",
-        }
+        self.label
     }
 }
 
@@ -120,16 +76,16 @@ pub enum TraceAction {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TraceEvent {
-    actor: ActorKind,
+    actor: TraceNode,
     action: TraceAction,
 }
 
 impl TraceEvent {
-    pub fn new(actor: ActorKind, action: TraceAction) -> Self {
+    pub fn new(actor: TraceNode, action: TraceAction) -> Self {
         Self { actor, action }
     }
 
-    pub fn actor(&self) -> ActorKind {
+    pub fn actor(&self) -> TraceNode {
         self.actor
     }
 
@@ -152,21 +108,21 @@ impl ActorTrace {
         &self.events
     }
 
-    pub fn record(&mut self, actor: ActorKind, action: TraceAction) {
+    pub fn record(&mut self, actor: TraceNode, action: TraceAction) {
         self.events.push(TraceEvent::new(actor, action));
     }
 
-    pub fn contains(&self, actor: ActorKind) -> bool {
+    pub fn contains(&self, actor: TraceNode) -> bool {
         self.events.iter().any(|event| event.actor == actor)
     }
 
-    pub fn contains_action(&self, actor: ActorKind, action: TraceAction) -> bool {
+    pub fn contains_action(&self, actor: TraceNode, action: TraceAction) -> bool {
         self.events
             .iter()
             .any(|event| event.actor == actor && event.action == action)
     }
 
-    pub fn contains_ordered(&self, actors: &[ActorKind]) -> bool {
+    pub fn contains_ordered(&self, actors: &[TraceNode]) -> bool {
         let mut remaining = actors.iter();
         let Some(mut expected) = remaining.next() else {
             return true;

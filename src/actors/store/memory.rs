@@ -6,7 +6,7 @@ use crate::{MemoryGraph, MemoryState, MindEnvelope, StoreLocation};
 use super::kernel::{CommitMemoryGraph, KernelCommit, StoreKernel};
 use super::persistence::PersistenceRejection;
 use super::write_trace::WriteTrace;
-use super::{ActorKind, ActorTrace, PipelineReply, TraceAction};
+use super::{ActorTrace, PipelineReply, TraceAction, TraceNode};
 
 #[derive(Clone)]
 pub(super) struct Arguments {
@@ -39,7 +39,7 @@ impl MemoryStore {
     }
 
     async fn apply(&mut self, envelope: MindEnvelope, mut trace: ActorTrace) -> PipelineReply {
-        trace.record(ActorKind::MemoryStore, TraceAction::MessageReceived);
+        trace.record(TraceNode::MEMORY_STORE, TraceAction::MessageReceived);
         WriteTrace::from_request(envelope.request()).record_into(&mut trace);
 
         let stage = self.memory.stage_envelope(envelope);
@@ -54,8 +54,8 @@ impl MemoryStore {
                 .map(KernelCommit::into_rejection)
                 .unwrap_or_else(|error| Some(PersistenceRejection::reply(error)));
             if commit.is_some() {
-                trace.record(ActorKind::EventAppender, TraceAction::MessageReceived);
-                trace.record(ActorKind::Commit, TraceAction::CommitCompleted);
+                trace.record(TraceNode::EVENT_APPENDER, TraceAction::MessageReceived);
+                trace.record(TraceNode::COMMIT, TraceAction::CommitCompleted);
                 return PipelineReply::new(commit, trace);
             }
         }
@@ -64,14 +64,14 @@ impl MemoryStore {
             self.memory.replace_graph(graph);
         }
 
-        trace.record(ActorKind::EventAppender, TraceAction::MessageReceived);
-        trace.record(ActorKind::Commit, TraceAction::CommitCompleted);
+        trace.record(TraceNode::EVENT_APPENDER, TraceAction::MessageReceived);
+        trace.record(TraceNode::COMMIT, TraceAction::CommitCompleted);
         PipelineReply::new(reply, trace)
     }
 
     fn read(&mut self, envelope: MindEnvelope, mut trace: ActorTrace) -> PipelineReply {
-        trace.record(ActorKind::MemoryStore, TraceAction::MessageReceived);
-        trace.record(ActorKind::SemaReader, TraceAction::MessageReceived);
+        trace.record(TraceNode::MEMORY_STORE, TraceAction::MessageReceived);
+        trace.record(TraceNode::SEMA_READER, TraceAction::MessageReceived);
 
         let reply = self.memory.dispatch_envelope(envelope);
 

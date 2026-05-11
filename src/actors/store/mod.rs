@@ -11,7 +11,7 @@ use kameo::message::{Context, Message};
 use crate::{MindEnvelope, StoreLocation};
 
 use super::pipeline::PipelineReply;
-use super::trace::{ActorKind, ActorTrace, TraceAction};
+use super::trace::{ActorTrace, TraceAction, TraceNode};
 use activity::ActivityStore;
 use claims::ClaimStore;
 use kernel::{LoadMemoryGraph, StoreKernel};
@@ -82,7 +82,7 @@ impl StoreSupervisor {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> crate::Result<PipelineReply> {
-        trace.record(ActorKind::StoreSupervisor, TraceAction::MessageReceived);
+        trace.record(TraceNode::STORE_SUPERVISOR, TraceAction::MessageReceived);
         self.memory
             .ask(memory::Apply { envelope, trace })
             .await
@@ -94,7 +94,7 @@ impl StoreSupervisor {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> crate::Result<PipelineReply> {
-        trace.record(ActorKind::StoreSupervisor, TraceAction::MessageReceived);
+        trace.record(TraceNode::STORE_SUPERVISOR, TraceAction::MessageReceived);
         self.memory
             .ask(memory::Read { envelope, trace })
             .await
@@ -106,7 +106,7 @@ impl StoreSupervisor {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> crate::Result<PipelineReply> {
-        trace.record(ActorKind::StoreSupervisor, TraceAction::MessageReceived);
+        trace.record(TraceNode::STORE_SUPERVISOR, TraceAction::MessageReceived);
         self.claims
             .ask(claims::Apply { envelope, trace })
             .await
@@ -118,7 +118,7 @@ impl StoreSupervisor {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> crate::Result<PipelineReply> {
-        trace.record(ActorKind::StoreSupervisor, TraceAction::MessageReceived);
+        trace.record(TraceNode::STORE_SUPERVISOR, TraceAction::MessageReceived);
         self.claims
             .ask(claims::ApplyHandoffRequest { envelope, trace })
             .await
@@ -130,7 +130,7 @@ impl StoreSupervisor {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> crate::Result<PipelineReply> {
-        trace.record(ActorKind::StoreSupervisor, TraceAction::MessageReceived);
+        trace.record(TraceNode::STORE_SUPERVISOR, TraceAction::MessageReceived);
         self.claims
             .ask(claims::Read { envelope, trace })
             .await
@@ -142,7 +142,7 @@ impl StoreSupervisor {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> crate::Result<PipelineReply> {
-        trace.record(ActorKind::StoreSupervisor, TraceAction::MessageReceived);
+        trace.record(TraceNode::STORE_SUPERVISOR, TraceAction::MessageReceived);
         self.activity
             .ask(activity::Apply { envelope, trace })
             .await
@@ -154,7 +154,7 @@ impl StoreSupervisor {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> crate::Result<PipelineReply> {
-        trace.record(ActorKind::StoreSupervisor, TraceAction::MessageReceived);
+        trace.record(TraceNode::STORE_SUPERVISOR, TraceAction::MessageReceived);
         self.activity
             .ask(activity::Read { envelope, trace })
             .await

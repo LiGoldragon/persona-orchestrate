@@ -1,4 +1,4 @@
-use super::trace::ActorKind;
+use super::trace::TraceNode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActorResidency {
@@ -9,16 +9,16 @@ pub enum ActorResidency {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManifestEntry {
-    kind: ActorKind,
+    kind: TraceNode,
     residency: ActorResidency,
 }
 
 impl ManifestEntry {
-    pub fn new(kind: ActorKind, residency: ActorResidency) -> Self {
+    pub fn new(kind: TraceNode, residency: ActorResidency) -> Self {
         Self { kind, residency }
     }
 
-    pub fn kind(&self) -> ActorKind {
+    pub fn kind(&self) -> TraceNode {
         self.kind
     }
 
@@ -29,20 +29,20 @@ impl ManifestEntry {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ManifestEdge {
-    parent: ActorKind,
-    child: ActorKind,
+    parent: TraceNode,
+    child: TraceNode,
 }
 
 impl ManifestEdge {
-    pub fn new(parent: ActorKind, child: ActorKind) -> Self {
+    pub fn new(parent: TraceNode, child: TraceNode) -> Self {
         Self { parent, child }
     }
 
-    pub fn parent(&self) -> ActorKind {
+    pub fn parent(&self) -> TraceNode {
         self.parent
     }
 
-    pub fn child(&self) -> ActorKind {
+    pub fn child(&self) -> TraceNode {
         self.child
     }
 }
@@ -60,117 +60,120 @@ impl ActorManifest {
         let trace_phase = ActorResidency::TracePhase;
 
         let actors = vec![
-            ManifestEntry::new(ActorKind::MindRoot, root),
-            ManifestEntry::new(ActorKind::Config, long_lived),
-            ManifestEntry::new(ActorKind::IngressPhase, long_lived),
-            ManifestEntry::new(ActorKind::RequestSession, trace_phase),
-            ManifestEntry::new(ActorKind::NotaDecoder, trace_phase),
-            ManifestEntry::new(ActorKind::CallerIdentityResolver, trace_phase),
-            ManifestEntry::new(ActorKind::EnvelopeBuilder, trace_phase),
-            ManifestEntry::new(ActorKind::DispatchPhase, long_lived),
-            ManifestEntry::new(ActorKind::RequestDispatcher, trace_phase),
-            ManifestEntry::new(ActorKind::ClaimFlow, trace_phase),
-            ManifestEntry::new(ActorKind::HandoffFlow, trace_phase),
-            ManifestEntry::new(ActorKind::ActivityFlow, trace_phase),
-            ManifestEntry::new(ActorKind::MemoryFlow, trace_phase),
-            ManifestEntry::new(ActorKind::QueryFlow, trace_phase),
-            ManifestEntry::new(ActorKind::DomainPhase, long_lived),
-            ManifestEntry::new(ActorKind::ClaimSupervisor, trace_phase),
-            ManifestEntry::new(ActorKind::MemoryGraphSupervisor, trace_phase),
-            ManifestEntry::new(ActorKind::QuerySupervisor, trace_phase),
-            ManifestEntry::new(ActorKind::ItemOpen, trace_phase),
-            ManifestEntry::new(ActorKind::NoteAdd, trace_phase),
-            ManifestEntry::new(ActorKind::Link, trace_phase),
-            ManifestEntry::new(ActorKind::StatusChange, trace_phase),
-            ManifestEntry::new(ActorKind::AliasAdd, trace_phase),
-            ManifestEntry::new(ActorKind::QueryPlanner, trace_phase),
-            ManifestEntry::new(ActorKind::GraphTraversal, trace_phase),
-            ManifestEntry::new(ActorKind::QueryResultShaper, trace_phase),
-            ManifestEntry::new(ActorKind::StoreSupervisor, long_lived),
-            ManifestEntry::new(ActorKind::StoreKernel, long_lived),
-            ManifestEntry::new(ActorKind::MemoryStore, long_lived),
-            ManifestEntry::new(ActorKind::ClaimStore, long_lived),
-            ManifestEntry::new(ActorKind::ActivityStore, long_lived),
-            ManifestEntry::new(ActorKind::SemaWriter, trace_phase),
-            ManifestEntry::new(ActorKind::SemaReader, trace_phase),
-            ManifestEntry::new(ActorKind::IdMint, trace_phase),
-            ManifestEntry::new(ActorKind::Clock, trace_phase),
-            ManifestEntry::new(ActorKind::EventAppender, trace_phase),
-            ManifestEntry::new(ActorKind::ActivityAppender, trace_phase),
-            ManifestEntry::new(ActorKind::Commit, trace_phase),
-            ManifestEntry::new(ActorKind::ViewPhase, long_lived),
-            ManifestEntry::new(ActorKind::RoleSnapshotView, trace_phase),
-            ManifestEntry::new(ActorKind::ReadyWorkView, trace_phase),
-            ManifestEntry::new(ActorKind::BlockedWorkView, trace_phase),
-            ManifestEntry::new(ActorKind::RecentActivityView, trace_phase),
-            ManifestEntry::new(ActorKind::SubscriptionSupervisor, long_lived),
-            ManifestEntry::new(ActorKind::CommitBus, trace_phase),
-            ManifestEntry::new(ActorKind::Subscriber, trace_phase),
-            ManifestEntry::new(ActorKind::ReplySupervisor, long_lived),
-            ManifestEntry::new(ActorKind::NotaReplyEncoder, trace_phase),
-            ManifestEntry::new(ActorKind::ErrorShaper, trace_phase),
+            ManifestEntry::new(TraceNode::MIND_ROOT, root),
+            ManifestEntry::new(TraceNode::CONFIG, long_lived),
+            ManifestEntry::new(TraceNode::INGRESS_PHASE, long_lived),
+            ManifestEntry::new(TraceNode::REQUEST_SESSION, trace_phase),
+            ManifestEntry::new(TraceNode::NOTA_DECODER, trace_phase),
+            ManifestEntry::new(TraceNode::CALLER_IDENTITY_RESOLVER, trace_phase),
+            ManifestEntry::new(TraceNode::ENVELOPE_BUILDER, trace_phase),
+            ManifestEntry::new(TraceNode::DISPATCH_PHASE, long_lived),
+            ManifestEntry::new(TraceNode::REQUEST_DISPATCHER, trace_phase),
+            ManifestEntry::new(TraceNode::CLAIM_FLOW, trace_phase),
+            ManifestEntry::new(TraceNode::HANDOFF_FLOW, trace_phase),
+            ManifestEntry::new(TraceNode::ACTIVITY_FLOW, trace_phase),
+            ManifestEntry::new(TraceNode::MEMORY_FLOW, trace_phase),
+            ManifestEntry::new(TraceNode::QUERY_FLOW, trace_phase),
+            ManifestEntry::new(TraceNode::DOMAIN_PHASE, long_lived),
+            ManifestEntry::new(TraceNode::CLAIM_SUPERVISOR, trace_phase),
+            ManifestEntry::new(TraceNode::MEMORY_GRAPH_SUPERVISOR, trace_phase),
+            ManifestEntry::new(TraceNode::QUERY_SUPERVISOR, trace_phase),
+            ManifestEntry::new(TraceNode::ITEM_OPEN, trace_phase),
+            ManifestEntry::new(TraceNode::NOTE_ADD, trace_phase),
+            ManifestEntry::new(TraceNode::LINK, trace_phase),
+            ManifestEntry::new(TraceNode::STATUS_CHANGE, trace_phase),
+            ManifestEntry::new(TraceNode::ALIAS_ADD, trace_phase),
+            ManifestEntry::new(TraceNode::QUERY_PLANNER, trace_phase),
+            ManifestEntry::new(TraceNode::GRAPH_TRAVERSAL, trace_phase),
+            ManifestEntry::new(TraceNode::QUERY_RESULT_SHAPER, trace_phase),
+            ManifestEntry::new(TraceNode::STORE_SUPERVISOR, long_lived),
+            ManifestEntry::new(TraceNode::STORE_KERNEL, long_lived),
+            ManifestEntry::new(TraceNode::MEMORY_STORE, long_lived),
+            ManifestEntry::new(TraceNode::CLAIM_STORE, long_lived),
+            ManifestEntry::new(TraceNode::ACTIVITY_STORE, long_lived),
+            ManifestEntry::new(TraceNode::SEMA_WRITER, trace_phase),
+            ManifestEntry::new(TraceNode::SEMA_READER, trace_phase),
+            ManifestEntry::new(TraceNode::ID_MINT, trace_phase),
+            ManifestEntry::new(TraceNode::CLOCK, trace_phase),
+            ManifestEntry::new(TraceNode::EVENT_APPENDER, trace_phase),
+            ManifestEntry::new(TraceNode::ACTIVITY_APPENDER, trace_phase),
+            ManifestEntry::new(TraceNode::COMMIT, trace_phase),
+            ManifestEntry::new(TraceNode::VIEW_PHASE, long_lived),
+            ManifestEntry::new(TraceNode::ROLE_SNAPSHOT_VIEW, trace_phase),
+            ManifestEntry::new(TraceNode::READY_WORK_VIEW, trace_phase),
+            ManifestEntry::new(TraceNode::BLOCKED_WORK_VIEW, trace_phase),
+            ManifestEntry::new(TraceNode::RECENT_ACTIVITY_VIEW, trace_phase),
+            ManifestEntry::new(TraceNode::SUBSCRIPTION_SUPERVISOR, long_lived),
+            ManifestEntry::new(TraceNode::COMMIT_BUS, trace_phase),
+            ManifestEntry::new(TraceNode::SUBSCRIBER, trace_phase),
+            ManifestEntry::new(TraceNode::REPLY_SUPERVISOR, long_lived),
+            ManifestEntry::new(TraceNode::NOTA_REPLY_ENCODER, trace_phase),
+            ManifestEntry::new(TraceNode::ERROR_SHAPER, trace_phase),
         ];
 
         let edges = vec![
-            ManifestEdge::new(ActorKind::MindRoot, ActorKind::Config),
-            ManifestEdge::new(ActorKind::MindRoot, ActorKind::IngressPhase),
-            ManifestEdge::new(ActorKind::MindRoot, ActorKind::DispatchPhase),
-            ManifestEdge::new(ActorKind::MindRoot, ActorKind::DomainPhase),
-            ManifestEdge::new(ActorKind::MindRoot, ActorKind::StoreSupervisor),
-            ManifestEdge::new(ActorKind::MindRoot, ActorKind::ViewPhase),
-            ManifestEdge::new(ActorKind::MindRoot, ActorKind::SubscriptionSupervisor),
-            ManifestEdge::new(ActorKind::MindRoot, ActorKind::ReplySupervisor),
-            ManifestEdge::new(ActorKind::IngressPhase, ActorKind::RequestSession),
-            ManifestEdge::new(ActorKind::IngressPhase, ActorKind::NotaDecoder),
-            ManifestEdge::new(ActorKind::IngressPhase, ActorKind::CallerIdentityResolver),
-            ManifestEdge::new(ActorKind::IngressPhase, ActorKind::EnvelopeBuilder),
-            ManifestEdge::new(ActorKind::DispatchPhase, ActorKind::RequestDispatcher),
-            ManifestEdge::new(ActorKind::DispatchPhase, ActorKind::ClaimFlow),
-            ManifestEdge::new(ActorKind::DispatchPhase, ActorKind::HandoffFlow),
-            ManifestEdge::new(ActorKind::DispatchPhase, ActorKind::ActivityFlow),
-            ManifestEdge::new(ActorKind::DispatchPhase, ActorKind::MemoryFlow),
-            ManifestEdge::new(ActorKind::DispatchPhase, ActorKind::QueryFlow),
-            ManifestEdge::new(ActorKind::DomainPhase, ActorKind::ClaimSupervisor),
-            ManifestEdge::new(ActorKind::DomainPhase, ActorKind::MemoryGraphSupervisor),
-            ManifestEdge::new(ActorKind::DomainPhase, ActorKind::QuerySupervisor),
-            ManifestEdge::new(ActorKind::MemoryGraphSupervisor, ActorKind::ItemOpen),
-            ManifestEdge::new(ActorKind::MemoryGraphSupervisor, ActorKind::NoteAdd),
-            ManifestEdge::new(ActorKind::MemoryGraphSupervisor, ActorKind::Link),
-            ManifestEdge::new(ActorKind::MemoryGraphSupervisor, ActorKind::StatusChange),
-            ManifestEdge::new(ActorKind::MemoryGraphSupervisor, ActorKind::AliasAdd),
-            ManifestEdge::new(ActorKind::QuerySupervisor, ActorKind::QueryPlanner),
-            ManifestEdge::new(ActorKind::QuerySupervisor, ActorKind::GraphTraversal),
-            ManifestEdge::new(ActorKind::QuerySupervisor, ActorKind::QueryResultShaper),
-            ManifestEdge::new(ActorKind::StoreSupervisor, ActorKind::StoreKernel),
-            ManifestEdge::new(ActorKind::StoreSupervisor, ActorKind::MemoryStore),
-            ManifestEdge::new(ActorKind::StoreSupervisor, ActorKind::ClaimStore),
-            ManifestEdge::new(ActorKind::StoreSupervisor, ActorKind::ActivityStore),
-            ManifestEdge::new(ActorKind::MemoryStore, ActorKind::StoreKernel),
-            ManifestEdge::new(ActorKind::ClaimStore, ActorKind::StoreKernel),
-            ManifestEdge::new(ActorKind::ActivityStore, ActorKind::StoreKernel),
-            ManifestEdge::new(ActorKind::MemoryStore, ActorKind::SemaWriter),
-            ManifestEdge::new(ActorKind::MemoryStore, ActorKind::SemaReader),
-            ManifestEdge::new(ActorKind::MemoryStore, ActorKind::IdMint),
-            ManifestEdge::new(ActorKind::MemoryStore, ActorKind::Clock),
-            ManifestEdge::new(ActorKind::MemoryStore, ActorKind::EventAppender),
-            ManifestEdge::new(ActorKind::MemoryStore, ActorKind::Commit),
-            ManifestEdge::new(ActorKind::ClaimStore, ActorKind::SemaWriter),
-            ManifestEdge::new(ActorKind::ClaimStore, ActorKind::SemaReader),
-            ManifestEdge::new(ActorKind::ClaimStore, ActorKind::EventAppender),
-            ManifestEdge::new(ActorKind::ClaimStore, ActorKind::Commit),
-            ManifestEdge::new(ActorKind::ActivityStore, ActorKind::SemaWriter),
-            ManifestEdge::new(ActorKind::ActivityStore, ActorKind::SemaReader),
-            ManifestEdge::new(ActorKind::ActivityStore, ActorKind::Clock),
-            ManifestEdge::new(ActorKind::ActivityStore, ActorKind::ActivityAppender),
-            ManifestEdge::new(ActorKind::ActivityStore, ActorKind::Commit),
-            ManifestEdge::new(ActorKind::ViewPhase, ActorKind::RoleSnapshotView),
-            ManifestEdge::new(ActorKind::ViewPhase, ActorKind::ReadyWorkView),
-            ManifestEdge::new(ActorKind::ViewPhase, ActorKind::BlockedWorkView),
-            ManifestEdge::new(ActorKind::ViewPhase, ActorKind::RecentActivityView),
-            ManifestEdge::new(ActorKind::SubscriptionSupervisor, ActorKind::CommitBus),
-            ManifestEdge::new(ActorKind::SubscriptionSupervisor, ActorKind::Subscriber),
-            ManifestEdge::new(ActorKind::ReplySupervisor, ActorKind::NotaReplyEncoder),
-            ManifestEdge::new(ActorKind::ReplySupervisor, ActorKind::ErrorShaper),
+            ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::CONFIG),
+            ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::INGRESS_PHASE),
+            ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::DISPATCH_PHASE),
+            ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::DOMAIN_PHASE),
+            ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::STORE_SUPERVISOR),
+            ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::VIEW_PHASE),
+            ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::SUBSCRIPTION_SUPERVISOR),
+            ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::REPLY_SUPERVISOR),
+            ManifestEdge::new(TraceNode::INGRESS_PHASE, TraceNode::REQUEST_SESSION),
+            ManifestEdge::new(TraceNode::INGRESS_PHASE, TraceNode::NOTA_DECODER),
+            ManifestEdge::new(
+                TraceNode::INGRESS_PHASE,
+                TraceNode::CALLER_IDENTITY_RESOLVER,
+            ),
+            ManifestEdge::new(TraceNode::INGRESS_PHASE, TraceNode::ENVELOPE_BUILDER),
+            ManifestEdge::new(TraceNode::DISPATCH_PHASE, TraceNode::REQUEST_DISPATCHER),
+            ManifestEdge::new(TraceNode::DISPATCH_PHASE, TraceNode::CLAIM_FLOW),
+            ManifestEdge::new(TraceNode::DISPATCH_PHASE, TraceNode::HANDOFF_FLOW),
+            ManifestEdge::new(TraceNode::DISPATCH_PHASE, TraceNode::ACTIVITY_FLOW),
+            ManifestEdge::new(TraceNode::DISPATCH_PHASE, TraceNode::MEMORY_FLOW),
+            ManifestEdge::new(TraceNode::DISPATCH_PHASE, TraceNode::QUERY_FLOW),
+            ManifestEdge::new(TraceNode::DOMAIN_PHASE, TraceNode::CLAIM_SUPERVISOR),
+            ManifestEdge::new(TraceNode::DOMAIN_PHASE, TraceNode::MEMORY_GRAPH_SUPERVISOR),
+            ManifestEdge::new(TraceNode::DOMAIN_PHASE, TraceNode::QUERY_SUPERVISOR),
+            ManifestEdge::new(TraceNode::MEMORY_GRAPH_SUPERVISOR, TraceNode::ITEM_OPEN),
+            ManifestEdge::new(TraceNode::MEMORY_GRAPH_SUPERVISOR, TraceNode::NOTE_ADD),
+            ManifestEdge::new(TraceNode::MEMORY_GRAPH_SUPERVISOR, TraceNode::LINK),
+            ManifestEdge::new(TraceNode::MEMORY_GRAPH_SUPERVISOR, TraceNode::STATUS_CHANGE),
+            ManifestEdge::new(TraceNode::MEMORY_GRAPH_SUPERVISOR, TraceNode::ALIAS_ADD),
+            ManifestEdge::new(TraceNode::QUERY_SUPERVISOR, TraceNode::QUERY_PLANNER),
+            ManifestEdge::new(TraceNode::QUERY_SUPERVISOR, TraceNode::GRAPH_TRAVERSAL),
+            ManifestEdge::new(TraceNode::QUERY_SUPERVISOR, TraceNode::QUERY_RESULT_SHAPER),
+            ManifestEdge::new(TraceNode::STORE_SUPERVISOR, TraceNode::STORE_KERNEL),
+            ManifestEdge::new(TraceNode::STORE_SUPERVISOR, TraceNode::MEMORY_STORE),
+            ManifestEdge::new(TraceNode::STORE_SUPERVISOR, TraceNode::CLAIM_STORE),
+            ManifestEdge::new(TraceNode::STORE_SUPERVISOR, TraceNode::ACTIVITY_STORE),
+            ManifestEdge::new(TraceNode::MEMORY_STORE, TraceNode::STORE_KERNEL),
+            ManifestEdge::new(TraceNode::CLAIM_STORE, TraceNode::STORE_KERNEL),
+            ManifestEdge::new(TraceNode::ACTIVITY_STORE, TraceNode::STORE_KERNEL),
+            ManifestEdge::new(TraceNode::MEMORY_STORE, TraceNode::SEMA_WRITER),
+            ManifestEdge::new(TraceNode::MEMORY_STORE, TraceNode::SEMA_READER),
+            ManifestEdge::new(TraceNode::MEMORY_STORE, TraceNode::ID_MINT),
+            ManifestEdge::new(TraceNode::MEMORY_STORE, TraceNode::CLOCK),
+            ManifestEdge::new(TraceNode::MEMORY_STORE, TraceNode::EVENT_APPENDER),
+            ManifestEdge::new(TraceNode::MEMORY_STORE, TraceNode::COMMIT),
+            ManifestEdge::new(TraceNode::CLAIM_STORE, TraceNode::SEMA_WRITER),
+            ManifestEdge::new(TraceNode::CLAIM_STORE, TraceNode::SEMA_READER),
+            ManifestEdge::new(TraceNode::CLAIM_STORE, TraceNode::EVENT_APPENDER),
+            ManifestEdge::new(TraceNode::CLAIM_STORE, TraceNode::COMMIT),
+            ManifestEdge::new(TraceNode::ACTIVITY_STORE, TraceNode::SEMA_WRITER),
+            ManifestEdge::new(TraceNode::ACTIVITY_STORE, TraceNode::SEMA_READER),
+            ManifestEdge::new(TraceNode::ACTIVITY_STORE, TraceNode::CLOCK),
+            ManifestEdge::new(TraceNode::ACTIVITY_STORE, TraceNode::ACTIVITY_APPENDER),
+            ManifestEdge::new(TraceNode::ACTIVITY_STORE, TraceNode::COMMIT),
+            ManifestEdge::new(TraceNode::VIEW_PHASE, TraceNode::ROLE_SNAPSHOT_VIEW),
+            ManifestEdge::new(TraceNode::VIEW_PHASE, TraceNode::READY_WORK_VIEW),
+            ManifestEdge::new(TraceNode::VIEW_PHASE, TraceNode::BLOCKED_WORK_VIEW),
+            ManifestEdge::new(TraceNode::VIEW_PHASE, TraceNode::RECENT_ACTIVITY_VIEW),
+            ManifestEdge::new(TraceNode::SUBSCRIPTION_SUPERVISOR, TraceNode::COMMIT_BUS),
+            ManifestEdge::new(TraceNode::SUBSCRIPTION_SUPERVISOR, TraceNode::SUBSCRIBER),
+            ManifestEdge::new(TraceNode::REPLY_SUPERVISOR, TraceNode::NOTA_REPLY_ENCODER),
+            ManifestEdge::new(TraceNode::REPLY_SUPERVISOR, TraceNode::ERROR_SHAPER),
         ];
 
         Self { actors, edges }
@@ -184,11 +187,11 @@ impl ActorManifest {
         &self.edges
     }
 
-    pub fn contains(&self, actor: ActorKind) -> bool {
+    pub fn contains(&self, actor: TraceNode) -> bool {
         self.actors.iter().any(|entry| entry.kind == actor)
     }
 
-    pub fn contains_edge(&self, parent: ActorKind, child: ActorKind) -> bool {
+    pub fn contains_edge(&self, parent: TraceNode, child: TraceNode) -> bool {
         self.edges
             .iter()
             .any(|edge| edge.parent == parent && edge.child == child)

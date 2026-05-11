@@ -6,7 +6,7 @@ use crate::{MindEnvelope, Result as CrateResult};
 
 use super::dispatch;
 use super::pipeline::PipelineReply;
-use super::trace::{ActorKind, ActorTrace, TraceAction};
+use super::trace::{ActorTrace, TraceAction, TraceNode};
 
 pub(super) struct IngressPhase {
     dispatch: ActorRef<dispatch::DispatchPhase>,
@@ -32,14 +32,14 @@ impl IngressPhase {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
-        trace.record(ActorKind::IngressPhase, TraceAction::MessageReceived);
-        trace.record(ActorKind::RequestSession, TraceAction::MessageReceived);
-        trace.record(ActorKind::NotaDecoder, TraceAction::MessageReceived);
+        trace.record(TraceNode::INGRESS_PHASE, TraceAction::MessageReceived);
+        trace.record(TraceNode::REQUEST_SESSION, TraceAction::MessageReceived);
+        trace.record(TraceNode::NOTA_DECODER, TraceAction::MessageReceived);
         trace.record(
-            ActorKind::CallerIdentityResolver,
+            TraceNode::CALLER_IDENTITY_RESOLVER,
             TraceAction::MessageReceived,
         );
-        trace.record(ActorKind::EnvelopeBuilder, TraceAction::MessageReplied);
+        trace.record(TraceNode::ENVELOPE_BUILDER, TraceAction::MessageReplied);
 
         self.dispatch
             .ask(dispatch::RouteEnvelope { envelope, trace })

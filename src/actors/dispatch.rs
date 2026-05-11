@@ -8,7 +8,7 @@ use crate::{MindEnvelope, Result as CrateResult};
 use super::domain;
 use super::pipeline::PipelineReply;
 use super::reply;
-use super::trace::{ActorKind, ActorTrace, TraceAction};
+use super::trace::{ActorTrace, TraceAction, TraceNode};
 use super::view;
 
 pub(super) struct DispatchPhase {
@@ -47,8 +47,8 @@ impl DispatchPhase {
         envelope: MindEnvelope,
         mut trace: ActorTrace,
     ) -> CrateResult<PipelineReply> {
-        trace.record(ActorKind::DispatchPhase, TraceAction::MessageReceived);
-        trace.record(ActorKind::RequestDispatcher, TraceAction::MessageReceived);
+        trace.record(TraceNode::DISPATCH_PHASE, TraceAction::MessageReceived);
+        trace.record(TraceNode::REQUEST_DISPATCHER, TraceAction::MessageReceived);
 
         let pipeline = match envelope.request() {
             MindRequest::Opening(_)
@@ -56,31 +56,31 @@ impl DispatchPhase {
             | MindRequest::Link(_)
             | MindRequest::StatusChange(_)
             | MindRequest::AliasAssignment(_) => {
-                trace.record(ActorKind::MemoryFlow, TraceAction::MessageReceived);
+                trace.record(TraceNode::MEMORY_FLOW, TraceAction::MessageReceived);
                 self.apply_memory(envelope, trace).await?
             }
             MindRequest::Query(_) => {
-                trace.record(ActorKind::QueryFlow, TraceAction::MessageReceived);
+                trace.record(TraceNode::QUERY_FLOW, TraceAction::MessageReceived);
                 self.read_memory(envelope, trace).await?
             }
             MindRequest::RoleClaim(_) | MindRequest::RoleRelease(_) => {
-                trace.record(ActorKind::ClaimFlow, TraceAction::MessageReceived);
+                trace.record(TraceNode::CLAIM_FLOW, TraceAction::MessageReceived);
                 self.apply_claim(envelope, trace).await?
             }
             MindRequest::RoleObservation(_) => {
-                trace.record(ActorKind::ClaimFlow, TraceAction::MessageReceived);
+                trace.record(TraceNode::CLAIM_FLOW, TraceAction::MessageReceived);
                 self.read_claims(envelope, trace).await?
             }
             MindRequest::ActivitySubmission(_) => {
-                trace.record(ActorKind::ActivityFlow, TraceAction::MessageReceived);
+                trace.record(TraceNode::ACTIVITY_FLOW, TraceAction::MessageReceived);
                 self.apply_activity(envelope, trace).await?
             }
             MindRequest::ActivityQuery(_) => {
-                trace.record(ActorKind::ActivityFlow, TraceAction::MessageReceived);
+                trace.record(TraceNode::ACTIVITY_FLOW, TraceAction::MessageReceived);
                 self.read_activity(envelope, trace).await?
             }
             MindRequest::RoleHandoff(_) => {
-                trace.record(ActorKind::HandoffFlow, TraceAction::MessageReceived);
+                trace.record(TraceNode::HANDOFF_FLOW, TraceAction::MessageReceived);
                 self.apply_handoff(envelope, trace).await?
             }
         };

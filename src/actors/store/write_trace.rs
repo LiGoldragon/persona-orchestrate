@@ -1,6 +1,6 @@
 use signal_persona_mind::MindRequest;
 
-use super::super::trace::{ActorKind, ActorTrace, TraceAction};
+use super::super::trace::{ActorTrace, TraceAction, TraceNode};
 
 pub(super) struct WriteTrace {
     reads_existing_graph: bool,
@@ -30,12 +30,12 @@ impl WriteTrace {
 
     pub(super) fn record_into(&self, trace: &mut ActorTrace) {
         if self.reads_existing_graph {
-            trace.record(ActorKind::SemaReader, TraceAction::MessageReceived);
+            trace.record(TraceNode::SEMA_READER, TraceAction::MessageReceived);
         }
         if self.mints_identity {
-            trace.record(ActorKind::IdMint, TraceAction::MessageReceived);
+            trace.record(TraceNode::ID_MINT, TraceAction::MessageReceived);
         }
-        trace.record(ActorKind::Clock, TraceAction::MessageReceived);
-        trace.record(ActorKind::SemaWriter, TraceAction::WriteIntentSent);
+        trace.record(TraceNode::CLOCK, TraceAction::MessageReceived);
+        trace.record(TraceNode::SEMA_WRITER, TraceAction::WriteIntentSent);
     }
 }

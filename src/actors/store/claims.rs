@@ -5,7 +5,7 @@ use crate::MindEnvelope;
 
 use super::kernel::{ApplyClaim, ApplyHandoff, KernelReply, ReadClaims, StoreKernel};
 use super::persistence::PersistenceRejection;
-use super::{ActorKind, ActorTrace, PipelineReply, TraceAction};
+use super::{ActorTrace, PipelineReply, TraceAction, TraceNode};
 
 #[derive(Clone)]
 pub(super) struct Arguments {
@@ -39,9 +39,9 @@ impl ClaimStore {
     }
 
     async fn apply_claim(&self, envelope: MindEnvelope, mut trace: ActorTrace) -> PipelineReply {
-        trace.record(ActorKind::ClaimStore, TraceAction::MessageReceived);
-        trace.record(ActorKind::SemaReader, TraceAction::MessageReceived);
-        trace.record(ActorKind::SemaWriter, TraceAction::WriteIntentSent);
+        trace.record(TraceNode::CLAIM_STORE, TraceAction::MessageReceived);
+        trace.record(TraceNode::SEMA_READER, TraceAction::MessageReceived);
+        trace.record(TraceNode::SEMA_WRITER, TraceAction::WriteIntentSent);
 
         let reply = self
             .kernel
@@ -51,15 +51,15 @@ impl ClaimStore {
             .map(KernelReply::into_reply)
             .unwrap_or_else(|error| Some(PersistenceRejection::reply(error)));
 
-        trace.record(ActorKind::EventAppender, TraceAction::MessageReceived);
-        trace.record(ActorKind::Commit, TraceAction::CommitCompleted);
+        trace.record(TraceNode::EVENT_APPENDER, TraceAction::MessageReceived);
+        trace.record(TraceNode::COMMIT, TraceAction::CommitCompleted);
         PipelineReply::new(reply, trace)
     }
 
     async fn apply_handoff(&self, envelope: MindEnvelope, mut trace: ActorTrace) -> PipelineReply {
-        trace.record(ActorKind::ClaimStore, TraceAction::MessageReceived);
-        trace.record(ActorKind::SemaReader, TraceAction::MessageReceived);
-        trace.record(ActorKind::SemaWriter, TraceAction::WriteIntentSent);
+        trace.record(TraceNode::CLAIM_STORE, TraceAction::MessageReceived);
+        trace.record(TraceNode::SEMA_READER, TraceAction::MessageReceived);
+        trace.record(TraceNode::SEMA_WRITER, TraceAction::WriteIntentSent);
 
         let reply = self
             .kernel
@@ -69,14 +69,14 @@ impl ClaimStore {
             .map(KernelReply::into_reply)
             .unwrap_or_else(|error| Some(PersistenceRejection::reply(error)));
 
-        trace.record(ActorKind::EventAppender, TraceAction::MessageReceived);
-        trace.record(ActorKind::Commit, TraceAction::CommitCompleted);
+        trace.record(TraceNode::EVENT_APPENDER, TraceAction::MessageReceived);
+        trace.record(TraceNode::COMMIT, TraceAction::CommitCompleted);
         PipelineReply::new(reply, trace)
     }
 
     async fn read_claims(&self, envelope: MindEnvelope, mut trace: ActorTrace) -> PipelineReply {
-        trace.record(ActorKind::ClaimStore, TraceAction::MessageReceived);
-        trace.record(ActorKind::SemaReader, TraceAction::MessageReceived);
+        trace.record(TraceNode::CLAIM_STORE, TraceAction::MessageReceived);
+        trace.record(TraceNode::SEMA_READER, TraceAction::MessageReceived);
 
         let reply = self
             .kernel
