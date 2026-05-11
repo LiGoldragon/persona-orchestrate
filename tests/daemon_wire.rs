@@ -77,8 +77,8 @@ async fn daemon_round_trip_uses_signal_frames_over_socket() {
 }
 
 #[tokio::test]
-async fn daemon_uses_signal_auth_for_actor_identity() {
-    let fixture = SocketFixture::new("auth-identity");
+async fn daemon_stamps_local_operator_actor_at_ingress() {
+    let fixture = SocketFixture::new("ingress-identity");
     let daemon = MindDaemon::new(fixture.endpoint(), fixture.store())
         .bind()
         .await
@@ -99,12 +99,12 @@ async fn daemon_uses_signal_auth_for_actor_identity() {
     let MindReply::OpeningReceipt(receipt) = client_reply else {
         panic!("expected opening receipt");
     };
-    assert_eq!(receipt.event.header.actor, ActorName::new("designer"));
+    assert_eq!(receipt.event.header.actor, ActorName::new("operator"));
 }
 
 #[tokio::test]
-async fn daemon_rejects_request_frames_without_auth() {
-    let fixture = SocketFixture::new("missing-auth");
+async fn daemon_accepts_sender_free_request_frames() {
+    let fixture = SocketFixture::new("sender-free");
     let daemon = MindDaemon::new(fixture.endpoint(), fixture.store())
         .bind()
         .await
@@ -122,14 +122,12 @@ async fn daemon_rejects_request_frames_without_auth() {
     codec
         .write_frame(&mut stream, &frame)
         .await
-        .expect("client writes unauthenticated frame");
+        .expect("client writes frame");
 
-    let error = server
+    server
         .await
         .expect("daemon task joins")
-        .expect_err("daemon rejects missing signal auth");
-
-    assert!(matches!(error, persona_mind::Error::MissingAuthProof));
+        .expect("daemon accepts sender-free signal frame");
 }
 
 #[tokio::test]

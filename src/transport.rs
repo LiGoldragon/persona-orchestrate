@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use signal_core::{AuthProof, LocalOperatorProof, Reply, Request};
+use signal_core::{Reply, Request};
 use signal_persona_mind::{ActorName, Frame, FrameBody, MindReply, MindRequest};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
@@ -82,9 +82,8 @@ impl MindFrameCodec {
     }
 
     pub fn request_frame(&self, actor: &ActorName, request: MindRequest) -> Frame {
-        Frame::new(FrameBody::Request(Request::assert(request))).with_auth(
-            AuthProof::LocalOperator(LocalOperatorProof::new(actor.as_str())),
-        )
+        let _ingress_scaffold = actor;
+        Frame::new(FrameBody::Request(Request::assert(request)))
     }
 
     pub fn reply_frame(&self, reply: MindReply) -> Frame {
@@ -95,13 +94,6 @@ impl MindFrameCodec {
         match frame.into_body() {
             FrameBody::Request(Request::Operation { payload, .. }) => Ok(payload),
             _ => Err(Error::UnexpectedFrame("expected mind request operation")),
-        }
-    }
-
-    pub fn actor_from_frame(&self, frame: &Frame) -> Result<ActorName> {
-        match frame.auth() {
-            Some(AuthProof::LocalOperator(proof)) => Ok(ActorName::new(proof.operator())),
-            None => Err(Error::MissingAuthProof),
         }
     }
 
@@ -214,7 +206,7 @@ impl BoundMindDaemon {
     async fn serve_next(&self) -> Result<MindReply> {
         let (mut stream, _address) = self.listener.accept().await?;
         let frame = self.codec.read_frame(&mut stream).await?;
-        let actor = self.codec.actor_from_frame(&frame)?;
+        let actor = ActorName::new("operator");
         let request = self.codec.request_from_frame(frame)?;
         let envelope = MindEnvelope::new(actor, request);
         let root_reply = self

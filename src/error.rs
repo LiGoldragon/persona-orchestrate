@@ -34,9 +34,6 @@ pub enum Error {
     #[error("unexpected signal frame: {0}")]
     UnexpectedFrame(&'static str),
 
-    #[error("missing signal auth proof")]
-    MissingAuthProof,
-
     #[error("frame is larger than configured limit: {found} > {limit}")]
     FrameTooLarge { found: usize, limit: usize },
 
