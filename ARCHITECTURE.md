@@ -321,7 +321,7 @@ This repo does not own:
 
 - `signal-persona-mind` contract records;
 - router delivery or harness messaging;
-- terminal or WezTerm transport;
+- terminal transport, which belongs to `persona-terminal`;
 - OS/window-manager observation;
 - `sema` kernel internals;
 - a shared database for other components;
