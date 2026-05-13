@@ -306,6 +306,23 @@ graph LR
     event --> note
 ```
 
+## 6.5 · Supervision-relation reception
+
+Per
+`~/primary/reports/designer/142-supervision-in-signal-persona-no-message-proxy-daemon.md` §2.2
+and
+`~/primary/reports/designer/143-prototype-readiness-gap-audit.md` §4.2:
+the mind daemon answers the `signal-persona::SupervisionRequest` relation
+from a canonical `SupervisionPhase` Kameo actor inside `MindRoot`'s tree.
+The phase actor carries `component_name`, `component_kind`,
+`supervision_protocol_version`, and the cached `ComponentHealth` pushed
+from the domain plane. For domain operations whose behavior is not yet
+built (e.g., the channel-choreography family until the policy engine
+lands), `MindRoot` replies
+`MindReply::MindRequestUnimplemented(NotInPrototypeScope)` — a typed
+answer, not a panic. The mind daemon reads its `signal-persona::SpawnEnvelope`
+at startup, binds `mind.sock` at the named mode, and proceeds.
+
 ## 7 · Boundaries
 
 This repo owns:
