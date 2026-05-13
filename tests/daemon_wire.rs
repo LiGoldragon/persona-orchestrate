@@ -2,11 +2,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use persona_mind::{MindClient, MindDaemon, MindDaemonEndpoint, MindFrameCodec, StoreLocation};
 use signal_persona_mind::{
-    ActorName, ByRelationKind, ByThoughtKind, Frame, FrameBody, GoalBody, GoalScope, ItemKind,
-    ItemPriority, MindReply, MindRequest, Opening, Query, QueryKind, QueryLimit, QueryRelations,
+    ActiveClaim, ActorName, Alternative, AlternativeId, ByRelationKind, ByThoughtKind,
+    ClaimActivity, ClaimBody, ClaimScope, DecisionBody, Frame, FrameBody, GoalBody, GoalScope,
+    ItemKind, ItemPriority, MindReply, MindRequest, NoteToSelf, ObservationBody,
+    ObservationSummary, Opening, PathClaimScope, Query, QueryKind, QueryLimit, QueryRelations,
     QueryThoughts, RelationFilter, RelationKind, RoleClaim, RoleName, RoleObservation, ScopeReason,
     ScopeReference, SubmitRelation, SubmitThought, TextBody, ThoughtBody, ThoughtFilter,
-    ThoughtKind, Title, WirePath, WorkspaceGoal,
+    ThoughtKind, TimestampNanos, Title, WirePath, WorkspaceGoal,
 };
 use tokio::net::UnixStream;
 
@@ -421,4 +423,146 @@ async fn mind_typed_relation_round_trip_uses_committed_thought_ids() {
     assert_eq!(list.relations[0].id, receipt.relation);
     assert_eq!(list.relations[0].source, memory.record);
     assert_eq!(list.relations[0].target, goal.record);
+}
+
+#[tokio::test]
+async fn mind_typed_graph_handles_goal_claim_observation_decision_scenario() {
+    let fixture = SocketFixture::new("typed-graph-scenario");
+    let daemon = MindDaemon::new(fixture.endpoint(), fixture.store())
+        .bind()
+        .await
+        .expect("daemon binds");
+    let endpoint = daemon.endpoint().clone();
+    let server = tokio::spawn(async move { daemon.serve_count(7).await });
+    let client = MindClient::new(endpoint, ActorName::new("operator"));
+
+    let goal = client
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("Replace lock files with persona-mind"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await
+        .expect("goal committed");
+    let claim = client
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Claim,
+            body: ThoughtBody::Claim(ClaimBody {
+                claimed_by: ActorName::new("operator"),
+                scope: ClaimScope::Paths(PathClaimScope {
+                    paths: vec![
+                        WirePath::from_absolute_path("/git/github.com/LiGoldragon/persona-mind")
+                            .expect("absolute path"),
+                    ],
+                }),
+                role: RoleName::Operator,
+                activity: ClaimActivity::Active(ActiveClaim {
+                    started_at: TimestampNanos::new(1),
+                }),
+            }),
+        }))
+        .await
+        .expect("claim committed");
+    let observation = client
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Observation,
+            body: ThoughtBody::Observation(ObservationBody {
+                summary: ObservationSummary::NoteToSelf(NoteToSelf {
+                    body: TextBody::new("Graph scenario crossed the daemon path"),
+                }),
+                detail: None,
+                location: None,
+            }),
+        }))
+        .await
+        .expect("observation committed");
+    let decision = client
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Decision,
+            body: ThoughtBody::Decision(DecisionBody {
+                question: TextBody::new("Where should workspace coordination live?"),
+                alternatives: vec![Alternative {
+                    id: AlternativeId::new("mind"),
+                    description: TextBody::new("Use persona-mind as the central graph"),
+                    pros: vec![TextBody::new("typed state")],
+                    cons: vec![TextBody::new("prototype still young")],
+                }],
+                chosen: AlternativeId::new("mind"),
+                criteria: vec![TextBody::new("typed daemon state")],
+                rationale: TextBody::new("Mind replaces lock files and BEADS over time"),
+            }),
+        }))
+        .await
+        .expect("decision committed");
+
+    let MindReply::ThoughtCommitted(goal) = goal else {
+        panic!("expected goal commit");
+    };
+    let MindReply::ThoughtCommitted(claim) = claim else {
+        panic!("expected claim commit");
+    };
+    let MindReply::ThoughtCommitted(observation) = observation else {
+        panic!("expected observation commit");
+    };
+    let MindReply::ThoughtCommitted(decision) = decision else {
+        panic!("expected decision commit");
+    };
+
+    let _claim_relation = client
+        .submit(MindRequest::SubmitRelation(SubmitRelation {
+            kind: RelationKind::Realizes,
+            source: claim.record.clone(),
+            target: goal.record.clone(),
+            note: Some(TextBody::new("claim advances the goal")),
+        }))
+        .await
+        .expect("claim relation committed");
+    let _decision_relation = client
+        .submit(MindRequest::SubmitRelation(SubmitRelation {
+            kind: RelationKind::Decides,
+            source: decision.record.clone(),
+            target: goal.record.clone(),
+            note: Some(TextBody::new("decision chooses the goal shape")),
+        }))
+        .await
+        .expect("decision relation committed");
+
+    let thoughts = client
+        .submit(MindRequest::QueryThoughts(QueryThoughts {
+            filter: ThoughtFilter::ByKind(ByThoughtKind {
+                kinds: vec![
+                    ThoughtKind::Observation,
+                    ThoughtKind::Goal,
+                    ThoughtKind::Claim,
+                    ThoughtKind::Decision,
+                ],
+            }),
+            limit: 10,
+        }))
+        .await
+        .expect("thoughts queried");
+
+    server
+        .await
+        .expect("daemon joins")
+        .expect("daemon serves scenario");
+
+    let MindReply::ThoughtList(thoughts) = thoughts else {
+        panic!("expected thought list");
+    };
+    let mut kinds = thoughts
+        .thoughts
+        .into_iter()
+        .map(|thought| (thought.id, thought.kind))
+        .collect::<Vec<_>>();
+    kinds.sort_by_key(|(_id, kind)| *kind as u8);
+
+    assert!(kinds.contains(&(goal.record.clone(), ThoughtKind::Goal)));
+    assert!(kinds.contains(&(claim.record.clone(), ThoughtKind::Claim)));
+    assert!(kinds.contains(&(observation.record, ThoughtKind::Observation)));
+    assert!(kinds.contains(&(decision.record, ThoughtKind::Decision)));
 }
