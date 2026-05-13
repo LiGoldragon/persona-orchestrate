@@ -61,7 +61,6 @@ impl ActorManifest {
 
         let actors = vec![
             ManifestEntry::new(TraceNode::MIND_ROOT, root),
-            ManifestEntry::new(TraceNode::CONFIG, long_lived),
             ManifestEntry::new(TraceNode::INGRESS_PHASE, long_lived),
             ManifestEntry::new(TraceNode::REQUEST_SESSION, trace_phase),
             ManifestEntry::new(TraceNode::NOTA_DECODER, trace_phase),
@@ -120,7 +119,6 @@ impl ActorManifest {
         ];
 
         let edges = vec![
-            ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::CONFIG),
             ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::INGRESS_PHASE),
             ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::DISPATCH_PHASE),
             ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::DOMAIN_PHASE),

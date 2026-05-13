@@ -131,7 +131,6 @@ Current long-lived actors:
 
 ```mermaid
 graph TB
-    root[MindRoot] --> config[Config]
     root --> ingress[IngressPhase]
     root --> dispatch[DispatchPhase]
     root --> domain[DomainPhase]
@@ -478,6 +477,7 @@ constraints:
 | `activity_query_reads_recent_activity_without_writer` | activity query is a read path with filters. |
 | `role_observation_includes_recent_activity` | role observation includes the recent activity projection. |
 | `mind_tables_open_stays_inside_the_store_actor_boundary` | `mind.redb` is opened only at the store actor boundary. |
+| `dead_config_actor_cannot_return_without_real_mailbox_use` | no placeholder Config actor exists unless it owns a real mailbox path. |
 | `memory_state_cannot_hide_mutation_behind_refcell` | memory mutation is actor-owned mutable state, not interior mutability. |
 | `query_ready_uses_reader_without_writer` | read path cannot mutate state. |
 | `daemon_round_trip_uses_signal_frames_over_socket` | one socket request/reply crosses the Signal-frame transport and reaches `MindRoot`. |
@@ -516,7 +516,6 @@ src/actors/store.rs        store supervisor, store kernel, and narrow store acto
 src/actors/store/graph.rs  typed Thought/Relation graph actor lane
 src/actors/view.rs         query/read-view path
 src/actors/reply.rs        typed reply shaping path
-src/actors/config.rs       store-path configuration actor
 src/actors/subscription.rs post-commit push actor placeholder
 src/actors/manifest.rs     actor topology manifest
 src/actors/trace.rs        actor trace witness types

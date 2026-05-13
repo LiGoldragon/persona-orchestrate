@@ -5,7 +5,6 @@ pub struct TraceNode {
 
 impl TraceNode {
     pub const MIND_ROOT: Self = Self::new("MindRoot");
-    pub const CONFIG: Self = Self::new("Config");
     pub const INGRESS_PHASE: Self = Self::new("IngressPhase");
     pub const REQUEST_SESSION: Self = Self::new("RequestSession");
     pub const NOTA_DECODER: Self = Self::new("NotaDecoder");

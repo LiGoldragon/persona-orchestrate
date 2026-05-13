@@ -98,7 +98,6 @@ fn topology_manifest_names_required_actor_planes() {
 
     for actor in [
         TraceNode::MIND_ROOT,
-        TraceNode::CONFIG,
         TraceNode::INGRESS_PHASE,
         TraceNode::DISPATCH_PHASE,
         TraceNode::DOMAIN_PHASE,

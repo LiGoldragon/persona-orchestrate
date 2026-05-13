@@ -68,6 +68,13 @@
               cargoTestExtraArgs = "--test weird_actor_truth";
             }
           );
+          mind-dead-config-actor-cannot-return-without-real-mailbox-use = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test weird_actor_truth dead_config_actor_cannot_return_without_real_mailbox_use";
+            }
+          );
           daemon-wire = craneLib.cargoTest (
             commonArgs
             // {

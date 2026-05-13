@@ -585,6 +585,52 @@ fn mind_source_cannot_project_lock_files_or_live_beads_backend() {
 }
 
 #[test]
+fn dead_config_actor_cannot_return_without_real_mailbox_use() {
+    let source_tree = SourceTree::new();
+    let source_files = source_tree.source_files();
+    let forbidden_fragments = [
+        ForbiddenFragment {
+            text: "ReadStoreLocation",
+            reason: "Config mailbox was dead code; store location flows through root arguments",
+        },
+        ForbiddenFragment {
+            text: "StoreLocationProbe",
+            reason: "Config probe was a fake witness for an unused actor",
+        },
+        ForbiddenFragment {
+            text: "TraceNode::CONFIG",
+            reason: "dead Config actor must not remain in topology",
+        },
+        ForbiddenFragment {
+            text: "pub(crate) mod config",
+            reason: "dead Config actor module must not be re-exported",
+        },
+    ];
+
+    let has_config_source = source_files
+        .iter()
+        .any(|file| file.relative_name() == "src/actors/config.rs");
+    let violations = forbidden_fragments
+        .iter()
+        .flat_map(|fragment| {
+            source_files
+                .iter()
+                .flat_map(|file| file.violations_for(fragment))
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        !has_config_source && violations.is_empty(),
+        "dead Config actor evidence remains:\n{}",
+        violations
+            .iter()
+            .map(SourceViolation::summary)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+#[test]
 fn mind_tables_open_stays_inside_the_store_kernel() {
     let violations = SourceTree::new()
         .source_files()

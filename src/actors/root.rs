@@ -6,7 +6,7 @@ use signal_persona_mind::MindReply;
 use crate::{Error, MindEnvelope, Result, StoreLocation};
 
 use super::trace::{ActorTrace, TraceAction, TraceNode};
-use super::{config, dispatch, domain, ingress, reply, store, subscription, view};
+use super::{dispatch, domain, ingress, reply, store, subscription, view};
 
 pub struct MindRoot {
     ingress: ActorRef<ingress::IngressPhase>,
@@ -91,15 +91,6 @@ impl Actor for MindRoot {
         arguments: Self::Args,
         actor_reference: ActorRef<Self>,
     ) -> std::result::Result<Self, Self::Error> {
-        let _config = config::Config::supervise(
-            &actor_reference,
-            config::Arguments {
-                store: arguments.store.clone(),
-            },
-        )
-        .spawn()
-        .await;
-
         let store = store::StoreSupervisor::supervise(
             &actor_reference,
             store::Arguments {
