@@ -8,12 +8,12 @@ use persona_mind::{
 };
 use signal_persona_mind::{
     ActiveClaim, ActivityFilter, ActivityQuery, ActivitySubmission, ActorName, ByRelationKind,
-    ByThoughtKind, ClaimActivity, ClaimBody, ClaimScope, GoalBody, GoalScope, ItemKind,
-    ItemPriority, MindReply, MindRequest, Opening, PathClaimScope, Query, QueryKind, QueryLimit,
-    QueryRelations, QueryThoughts, RelationFilter, RelationKind, RoleClaim, RoleHandoff, RoleName,
-    RoleObservation, RoleRelease, ScopeReason, ScopeReference, SubmitRelation, SubmitThought,
-    SubscribeRelations, SubscribeThoughts, TextBody, ThoughtBody, ThoughtFilter, ThoughtKind,
-    TimestampNanos, Title, WirePath, WorkspaceGoal,
+    ByThoughtKind, ClaimActivity, ClaimBody, ClaimScope, FileReference, GoalBody, GoalScope,
+    ItemKind, ItemPriority, MindReply, MindRequest, Opening, PathClaimScope, Query, QueryKind,
+    QueryLimit, QueryRelations, QueryThoughts, ReferenceBody, ReferenceTarget, RelationFilter,
+    RelationKind, RoleClaim, RoleHandoff, RoleName, RoleObservation, RoleRelease, ScopeReason,
+    ScopeReference, SubmitRelation, SubmitThought, SubscribeRelations, SubscribeThoughts, TextBody,
+    ThoughtBody, ThoughtFilter, ThoughtKind, TimestampNanos, Title, WirePath, WorkspaceGoal,
 };
 
 struct ActorFixture {
@@ -994,6 +994,71 @@ async fn relation_kind_rejects_wrong_domain() {
         .submit(MindRequest::QueryRelations(QueryRelations {
             filter: RelationFilter::ByKind(ByRelationKind {
                 kinds: vec![RelationKind::Implements],
+            }),
+            limit: 10,
+        }))
+        .await;
+
+    let MindReply::Rejection(_) = rejected.reply().expect("rejection reply exists") else {
+        panic!("expected typed rejection");
+    };
+    let MindReply::RelationList(list) = relations.reply().expect("relations reply exists") else {
+        panic!("expected relation list");
+    };
+
+    assert!(list.relations.is_empty());
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn authored_relation_rejects_non_identity_reference_source() {
+    let fixture = ActorFixture::new().await;
+    let source = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Reference,
+            body: ThoughtBody::Reference(ReferenceBody {
+                target: ReferenceTarget::File(FileReference {
+                    path: WirePath::from_absolute_path(
+                        "/git/github.com/LiGoldragon/persona-mind/ARCHITECTURE.md",
+                    )
+                    .expect("absolute path"),
+                }),
+                sense: Some(TextBody::new("a file reference cannot author a thought")),
+            }),
+        }))
+        .await;
+    let target = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("Only identities can author graph thoughts"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await;
+
+    let MindReply::ThoughtCommitted(source) = source.reply().expect("source reply exists") else {
+        panic!("expected source reference commit");
+    };
+    let MindReply::ThoughtCommitted(target) = target.reply().expect("target reply exists") else {
+        panic!("expected target goal commit");
+    };
+
+    let rejected = fixture
+        .submit(MindRequest::SubmitRelation(SubmitRelation {
+            kind: RelationKind::Authored,
+            source: source.record.clone(),
+            target: target.record.clone(),
+            note: None,
+        }))
+        .await;
+    let relations = fixture
+        .submit(MindRequest::QueryRelations(QueryRelations {
+            filter: RelationFilter::ByKind(ByRelationKind {
+                kinds: vec![RelationKind::Authored],
             }),
             limit: 10,
         }))

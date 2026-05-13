@@ -398,7 +398,9 @@ This repo does not own:
 - `SubmitRelation` must reference existing thought IDs; missing endpoints are
   rejected before persistence.
 - `SubmitRelation` must pass the `signal-persona-mind` relation
-  domain/range validator; runtime-local relation folklore is not accepted.
+  endpoint validator; runtime-local relation folklore is not accepted.
+- `Authored` relations must point from an identity Reference Thought to the
+  authored Thought; file/document/URL references cannot author graph records.
 - `Supersedes` relations must point from a newer Thought to an older Thought
   of the same `ThoughtKind`; cross-kind supersession is rejected before
   persistence.
@@ -492,6 +494,7 @@ constraints:
 | `typed_thought_query_uses_reader_without_writer` | typed graph queries are read-only. |
 | `typed_relation_rejects_missing_thought_endpoint` | relation endpoints are real thought IDs, not unchecked strings. |
 | `relation_kind_rejects_wrong_domain` | relation domain/range rules come from `signal-persona-mind` and reject invalid endpoints before persistence. |
+| `authored_relation_rejects_non_identity_reference_source` | `Authored` uses the contract endpoint validator and rejects non-identity Reference sources before persistence. |
 | `superseded_thought_excluded_from_current_query` | correction is a `Supersedes` relation and current queries hide the old target. |
 | `supersedes_relation_rejects_different_thought_kinds` | cross-kind supersession is rejected before persistence. |
 | `typed_thought_subscription_registers_and_returns_initial_snapshot` | thought subscriptions persist a filter and return matching durable thoughts. |

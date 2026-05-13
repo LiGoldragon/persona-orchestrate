@@ -234,7 +234,7 @@ impl MindTables {
         let target = self.read_thought(&submission.target)?;
         submission
             .kind
-            .validate_endpoint_kinds(source.kind, target.kind)
+            .validate_endpoints(&source, &target)
             .map_err(|mismatch| crate::Error::MindGraphRelationKindMismatch { mismatch })?;
 
         let slot = self.next_relation_slot()?;

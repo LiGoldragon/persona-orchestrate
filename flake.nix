@@ -117,6 +117,13 @@
               cargoTestExtraArgs = "--test actor_topology relation_kind_rejects_wrong_domain";
             }
           );
+          mind-authored-rejects-non-identity-reference-source = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test actor_topology authored_relation_rejects_non_identity_reference_source";
+            }
+          );
           mind-typed-thought-subscription-registers-and-returns-initial-snapshot = craneLib.cargoTest (
             commonArgs
             // {
