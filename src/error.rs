@@ -1,4 +1,4 @@
-use signal_persona_mind::ThoughtKind;
+use signal_persona_mind::{RelationKindMismatch, ThoughtKind};
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -71,11 +71,6 @@ pub enum Error {
     #[error("mind graph relation references missing thought: {record}")]
     MindGraphMissingRecord { record: String },
 
-    #[error(
-        "mind graph supersedes relation kind mismatch: source {source_kind:?}, target {target_kind:?}"
-    )]
-    MindGraphSupersedesKindMismatch {
-        source_kind: ThoughtKind,
-        target_kind: ThoughtKind,
-    },
+    #[error("mind graph relation kind mismatch: {mismatch:?}")]
+    MindGraphRelationKindMismatch { mismatch: RelationKindMismatch },
 }

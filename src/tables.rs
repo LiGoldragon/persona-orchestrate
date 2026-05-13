@@ -2,9 +2,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use sema::{Schema, SchemaVersion, Sema, Table};
 use signal_persona_mind::{
-    Activity, ActorName, RecordId, Relation, RelationId, RelationKind, RoleName, ScopeReason,
-    ScopeReference, SubmitRelation, SubmitThought, SubscribeRelations, SubscribeThoughts,
-    SubscriptionId, Thought, TimestampNanos,
+    Activity, ActorName, RecordId, Relation, RelationId, RoleName, ScopeReason, ScopeReference,
+    SubmitRelation, SubmitThought, SubscribeRelations, SubscribeThoughts, SubscriptionId, Thought,
+    TimestampNanos,
 };
 
 use crate::{MemoryGraph, Result, StoreLocation};
@@ -232,7 +232,10 @@ impl MindTables {
     ) -> Result<Relation> {
         let source = self.read_thought(&submission.source)?;
         let target = self.read_thought(&submission.target)?;
-        Self::validate_relation_kind(&submission.kind, &source, &target)?;
+        submission
+            .kind
+            .validate_endpoint_kinds(source.kind, target.kind)
+            .map_err(|mismatch| crate::Error::MindGraphRelationKindMismatch { mismatch })?;
 
         let slot = self.next_relation_slot()?;
         let relation = Relation {
@@ -375,21 +378,6 @@ impl MindTables {
             .ok_or_else(|| crate::Error::MindGraphMissingRecord {
                 record: record.as_str().to_string(),
             })
-    }
-
-    fn validate_relation_kind(
-        kind: &RelationKind,
-        source: &Thought,
-        target: &Thought,
-    ) -> Result<()> {
-        if *kind == RelationKind::Supersedes && source.kind != target.kind {
-            Err(crate::Error::MindGraphSupersedesKindMismatch {
-                source_kind: source.kind,
-                target_kind: target.kind,
-            })
-        } else {
-            Ok(())
-        }
     }
 }
 

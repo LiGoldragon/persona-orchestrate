@@ -720,13 +720,20 @@ async fn typed_relation_subscription_registers_and_returns_initial_snapshot() {
             }),
         }))
         .await;
-    let support = fixture
+    let claim = fixture
         .submit(MindRequest::SubmitThought(SubmitThought {
-            kind: ThoughtKind::Goal,
-            body: ThoughtBody::Goal(GoalBody {
-                description: TextBody::new("Relate subscription source"),
-                scope: GoalScope::Workspace(WorkspaceGoal {
-                    workspace: TextBody::new("primary"),
+            kind: ThoughtKind::Claim,
+            body: ThoughtBody::Claim(ClaimBody {
+                claimed_by: ActorName::new("operator"),
+                scope: ClaimScope::Paths(PathClaimScope {
+                    paths: vec![
+                        WirePath::from_absolute_path("/git/github.com/LiGoldragon/persona-mind")
+                            .expect("absolute path"),
+                    ],
+                }),
+                role: RoleName::Operator,
+                activity: ClaimActivity::Active(ActiveClaim {
+                    started_at: TimestampNanos::new(1),
                 }),
             }),
         }))
@@ -735,15 +742,14 @@ async fn typed_relation_subscription_registers_and_returns_initial_snapshot() {
     let MindReply::ThoughtCommitted(goal) = goal.reply().expect("goal reply exists") else {
         panic!("expected goal commit");
     };
-    let MindReply::ThoughtCommitted(support) = support.reply().expect("support reply exists")
-    else {
-        panic!("expected support commit");
+    let MindReply::ThoughtCommitted(claim) = claim.reply().expect("claim reply exists") else {
+        panic!("expected claim commit");
     };
 
     let _relation = fixture
         .submit(MindRequest::SubmitRelation(SubmitRelation {
-            kind: RelationKind::Supports,
-            source: support.record.clone(),
+            kind: RelationKind::Implements,
+            source: claim.record.clone(),
             target: goal.record.clone(),
             note: None,
         }))
@@ -751,7 +757,7 @@ async fn typed_relation_subscription_registers_and_returns_initial_snapshot() {
     let response = fixture
         .submit(MindRequest::SubscribeRelations(SubscribeRelations {
             filter: RelationFilter::ByKind(ByRelationKind {
-                kinds: vec![RelationKind::Supports],
+                kinds: vec![RelationKind::Implements],
             }),
         }))
         .await;
@@ -932,6 +938,75 @@ async fn typed_relation_rejects_missing_thought_endpoint() {
     };
     assert!(response.trace().contains(TraceNode::GRAPH_FLOW));
     assert!(response.trace().contains(TraceNode::GRAPH_STORE));
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn relation_kind_rejects_wrong_domain() {
+    let fixture = ActorFixture::new().await;
+    let goal = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("Wrong relation source"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await;
+    let claim = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Claim,
+            body: ThoughtBody::Claim(ClaimBody {
+                claimed_by: ActorName::new("operator"),
+                scope: ClaimScope::Paths(PathClaimScope {
+                    paths: vec![
+                        WirePath::from_absolute_path("/git/github.com/LiGoldragon/persona-mind")
+                            .expect("absolute path"),
+                    ],
+                }),
+                role: RoleName::Operator,
+                activity: ClaimActivity::Active(ActiveClaim {
+                    started_at: TimestampNanos::new(1),
+                }),
+            }),
+        }))
+        .await;
+
+    let MindReply::ThoughtCommitted(goal) = goal.reply().expect("goal reply exists") else {
+        panic!("expected goal commit");
+    };
+    let MindReply::ThoughtCommitted(claim) = claim.reply().expect("claim reply exists") else {
+        panic!("expected claim commit");
+    };
+
+    let rejected = fixture
+        .submit(MindRequest::SubmitRelation(SubmitRelation {
+            kind: RelationKind::Implements,
+            source: goal.record.clone(),
+            target: claim.record.clone(),
+            note: None,
+        }))
+        .await;
+    let relations = fixture
+        .submit(MindRequest::QueryRelations(QueryRelations {
+            filter: RelationFilter::ByKind(ByRelationKind {
+                kinds: vec![RelationKind::Implements],
+            }),
+            limit: 10,
+        }))
+        .await;
+
+    let MindReply::Rejection(_) = rejected.reply().expect("rejection reply exists") else {
+        panic!("expected typed rejection");
+    };
+    let MindReply::RelationList(list) = relations.reply().expect("relations reply exists") else {
+        panic!("expected relation list");
+    };
+
+    assert!(list.relations.is_empty());
 
     fixture.stop().await;
 }

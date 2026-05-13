@@ -369,30 +369,30 @@ async fn mind_typed_relation_round_trip_uses_committed_thought_ids() {
         }))
         .await
         .expect("goal committed");
-    let memory = client
+    let prerequisite_goal = client
         .submit(MindRequest::SubmitThought(SubmitThought {
             kind: ThoughtKind::Goal,
             body: ThoughtBody::Goal(GoalBody {
-                description: TextBody::new("Second thought endpoint"),
+                description: TextBody::new("Required earlier goal"),
                 scope: GoalScope::Workspace(WorkspaceGoal {
                     workspace: TextBody::new("primary"),
                 }),
             }),
         }))
         .await
-        .expect("second thought committed");
+        .expect("prerequisite goal committed");
 
     let MindReply::ThoughtCommitted(goal) = goal else {
         panic!("expected goal commit");
     };
-    let MindReply::ThoughtCommitted(memory) = memory else {
-        panic!("expected second thought commit");
+    let MindReply::ThoughtCommitted(prerequisite_goal) = prerequisite_goal else {
+        panic!("expected prerequisite goal commit");
     };
 
     let relation = client
         .submit(MindRequest::SubmitRelation(SubmitRelation {
-            kind: RelationKind::Supports,
-            source: memory.record.clone(),
+            kind: RelationKind::Requires,
+            source: prerequisite_goal.record.clone(),
             target: goal.record.clone(),
             note: Some(TextBody::new("typed relation witness")),
         }))
@@ -401,7 +401,7 @@ async fn mind_typed_relation_round_trip_uses_committed_thought_ids() {
     let list = client
         .submit(MindRequest::QueryRelations(QueryRelations {
             filter: RelationFilter::ByKind(ByRelationKind {
-                kinds: vec![RelationKind::Supports],
+                kinds: vec![RelationKind::Requires],
             }),
             limit: 10,
         }))
@@ -421,7 +421,7 @@ async fn mind_typed_relation_round_trip_uses_committed_thought_ids() {
     };
     assert_eq!(list.relations.len(), 1);
     assert_eq!(list.relations[0].id, receipt.relation);
-    assert_eq!(list.relations[0].source, memory.record);
+    assert_eq!(list.relations[0].source, prerequisite_goal.record);
     assert_eq!(list.relations[0].target, goal.record);
 }
 
