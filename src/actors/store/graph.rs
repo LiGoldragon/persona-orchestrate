@@ -134,6 +134,9 @@ impl GraphStore {
             TraceNode::SUBSCRIPTION_SUPERVISOR,
             TraceAction::MessageReceived,
         );
+        trace.record(TraceNode::ID_MINT, TraceAction::MessageReceived);
+        trace.record(TraceNode::SEMA_READER, TraceAction::MessageReceived);
+        trace.record(TraceNode::SEMA_WRITER, TraceAction::WriteIntentSent);
         let reply = self
             .kernel
             .ask(SubscribeThoughts::new(envelope))
@@ -141,6 +144,7 @@ impl GraphStore {
             .map_err(|error| crate::Error::ActorCall(error.to_string()))
             .map(KernelReply::into_reply)
             .unwrap_or_else(|error| Some(PersistenceRejection::reply(error)));
+        trace.record(TraceNode::COMMIT, TraceAction::CommitCompleted);
         PipelineReply::new(reply, trace)
     }
 
@@ -154,6 +158,9 @@ impl GraphStore {
             TraceNode::SUBSCRIPTION_SUPERVISOR,
             TraceAction::MessageReceived,
         );
+        trace.record(TraceNode::ID_MINT, TraceAction::MessageReceived);
+        trace.record(TraceNode::SEMA_READER, TraceAction::MessageReceived);
+        trace.record(TraceNode::SEMA_WRITER, TraceAction::WriteIntentSent);
         let reply = self
             .kernel
             .ask(SubscribeRelations::new(envelope))
@@ -161,6 +168,7 @@ impl GraphStore {
             .map_err(|error| crate::Error::ActorCall(error.to_string()))
             .map(KernelReply::into_reply)
             .unwrap_or_else(|error| Some(PersistenceRejection::reply(error)));
+        trace.record(TraceNode::COMMIT, TraceAction::CommitCompleted);
         PipelineReply::new(reply, trace)
     }
 }

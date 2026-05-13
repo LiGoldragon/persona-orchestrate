@@ -5,7 +5,8 @@ command-line mind.*
 
 > Status: the crate has a real Kameo runtime, mind-local Sema tables for
 > durable role claims, activity records, and a typed work-graph snapshot over
-> mind-local Sema, plus a Unix-socket Signal-frame daemon/client transport
+> mind-local Sema, typed Thought/Relation graph tables with subscription
+> registration and initial snapshots, plus a Unix-socket Signal-frame daemon/client transport
 > around `MindRoot`. The `mind` binary can run a daemon and submit NOTA role
 > claim/release/handoff/observation, activity submission/query, and work-graph
 > opening/note/link/status/alias/query requests through that daemon.
@@ -190,24 +191,26 @@ Current implementation:
   `ActivityStore`, and `GraphStore`.
 - `StoreKernel` is the only actor that opens and owns the `MindTables` handle
   over `mind.redb`.
-- `MindTables` schema v4 owns claims, activities, slot cursors, the typed
-  `memory_graph` snapshot table, and first-cut typed mind graph tables.
+- `MindTables` schema v5 owns claims, activities, slot cursors, the typed
+  `memory_graph` snapshot table, typed mind graph tables, and typed graph
+  subscription registration tables.
 - `ClaimStore` routes claim/release/handoff/observation work to `StoreKernel`,
   where `ClaimLedger` performs the Sema reads and writes.
 - `ActivityStore` routes activity append/query work to `StoreKernel`, where
   `ActivityLedger` performs the Sema reads and writes.
 - `MemoryStore` owns the private `MemoryState` reducer and commits accepted
   work/memory snapshots through `StoreKernel`.
-- `GraphStore` routes `SubmitThought`, `SubmitRelation`, `QueryThoughts`, and
-  `QueryRelations` to `StoreKernel`, where `MindGraphLedger` reads and writes
-  typed `Thought` and `Relation` records.
+- `GraphStore` routes `SubmitThought`, `SubmitRelation`, `QueryThoughts`,
+  `QueryRelations`, `SubscribeThoughts`, and `SubscribeRelations` to
+  `StoreKernel`, where `MindGraphLedger` reads and writes typed `Thought`,
+  `Relation`, and subscription registration records.
 - Work/memory mutations append typed `Event` values in the reducer, then
   replace the typed Sema graph snapshot before success replies are emitted.
 - Queries read the loaded work graph through `MemoryStore` and produce typed
   `View` replies.
 - Role claim, release, handoff, observation, activity submission, activity
-  query, and first typed mind-graph create/query operations are routed through
-  the actor path.
+  query, and first typed mind-graph create/query/subscription-registration
+  operations are routed through the actor path.
 
 Destination:
 
@@ -243,6 +246,9 @@ Recommended tables:
 | `relations` | Append-only typed `Relation` records between thoughts. |
 | `thought_next_slot` | Next thought-ID cursor. |
 | `relation_next_slot` | Next relation-ID cursor. |
+| `thought_subscriptions` | Durable `SubscribeThoughts` filters plus mind-minted subscription IDs. |
+| `relation_subscriptions` | Durable `SubscribeRelations` filters plus mind-minted subscription IDs. |
+| `subscription_next_slot` | Next subscription-ID cursor shared by thought and relation subscriptions. |
 | `items` | Work/memory/decision/question records. |
 | `notes` | Notes attached to items. |
 | `edges` | Dependencies and references. |
@@ -392,6 +398,11 @@ This repo does not own:
   records are rejected before persistence.
 - `SubmitRelation` must reference existing thought IDs; missing endpoints are
   rejected before persistence.
+- Typed graph subscriptions append filter records to `thought_subscriptions`
+  or `relation_subscriptions` and return an initial snapshot that is computed
+  from durable graph tables.
+- Typed graph subscription registration is implemented; post-commit delta
+  push delivery is not implemented yet.
 - `MindRequest` and `MindReply` come from `signal-persona-mind`; the CLI does
   not define a parallel command vocabulary.
 - All public state operations enter the actor system as one `MindEnvelope`.
@@ -403,8 +414,9 @@ This repo does not own:
 - Queries never send write intents.
 - Writes append typed events before producing success replies.
 - Typed graph queries use the read path and never write.
-- Typed graph subscription records decode and return a typed unimplemented
-  reply until the push subscription actor is implemented.
+- Typed graph subscription records register durable filters and return an
+  initial snapshot; later post-commit deltas require the push subscription
+  actor.
 - Role claim, release, handoff, and observation are successful runtime paths,
   not unsupported placeholders.
 - BEADS import creates aliases or external references only; there is no live
@@ -471,6 +483,9 @@ constraints:
 | `typed_thought_runs_through_graph_actor_lane_and_store_mints_id` | typed graph writes pass through graph actors and mind mints compact IDs. |
 | `typed_thought_query_uses_reader_without_writer` | typed graph queries are read-only. |
 | `typed_relation_rejects_missing_thought_endpoint` | relation endpoints are real thought IDs, not unchecked strings. |
+| `typed_thought_subscription_registers_and_returns_initial_snapshot` | thought subscriptions persist a filter and return matching durable thoughts. |
+| `typed_relation_subscription_registers_and_returns_initial_snapshot` | relation subscriptions persist a filter and return matching durable relations. |
+| `thought_subscription_is_durable_table_data` | subscription rows survive closing and reopening the Sema database handle. |
 | `mind_typed_thought_graph_survives_process_restart` | typed thoughts are durable across daemon restart. |
 | `mind_typed_relation_round_trip_uses_committed_thought_ids` | relations use committed thought IDs and survive the daemon path. |
 | `mind_cli_accepts_full_signal_mind_request_for_typed_graph` | CLI can submit a full `signal-persona-mind` request when the convenience text projection has no shorthand. |
@@ -499,7 +514,7 @@ src/actors/manifest.rs     actor topology manifest
 src/actors/trace.rs        actor trace witness types
 src/activity.rs            activity append/query ledger over mind-local Sema
 src/claim.rs               claim-scope reducer
-src/graph.rs               typed Thought/Relation ledger and filters
+src/graph.rs               typed Thought/Relation ledger, filters, and subscription snapshots
 src/memory.rs              memory/work graph reducer
 src/role.rs                local role value
 src/tables.rs              mind-local Sema schema and tables

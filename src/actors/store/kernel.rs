@@ -294,15 +294,21 @@ impl StoreKernel {
     }
 
     fn subscribe_thoughts(&self, envelope: MindEnvelope) -> KernelReply {
-        KernelReply::new(Some(
-            MindGraphLedger::new(&self.tables).subscribe_thoughts(envelope),
-        ))
+        let reply = MindGraphLedger::new(&self.tables)
+            .subscribe_thoughts(envelope)
+            .map(Some)
+            .unwrap_or_else(|error| Some(PersistenceRejection::reply(error)));
+
+        KernelReply::new(reply)
     }
 
     fn subscribe_relations(&self, envelope: MindEnvelope) -> KernelReply {
-        KernelReply::new(Some(
-            MindGraphLedger::new(&self.tables).subscribe_relations(envelope),
-        ))
+        let reply = MindGraphLedger::new(&self.tables)
+            .subscribe_relations(envelope)
+            .map(Some)
+            .unwrap_or_else(|error| Some(PersistenceRejection::reply(error)));
+
+        KernelReply::new(reply)
     }
 }
 

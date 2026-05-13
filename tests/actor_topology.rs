@@ -7,11 +7,12 @@ use persona_mind::{
     SubmitEnvelope,
 };
 use signal_persona_mind::{
-    ActivityFilter, ActivityQuery, ActivitySubmission, ActorName, ByThoughtKind, GoalBody,
-    GoalScope, ItemKind, ItemPriority, MindReply, MindRequest, Opening, Query, QueryKind,
-    QueryLimit, QueryThoughts, RoleClaim, RoleHandoff, RoleName, RoleObservation, RoleRelease,
-    ScopeReason, ScopeReference, SubmitRelation, SubmitThought, TextBody, ThoughtBody,
-    ThoughtFilter, ThoughtKind, Title, WirePath, WorkspaceGoal,
+    ActivityFilter, ActivityQuery, ActivitySubmission, ActorName, ByRelationKind, ByThoughtKind,
+    GoalBody, GoalScope, ItemKind, ItemPriority, MindReply, MindRequest, Opening, Query, QueryKind,
+    QueryLimit, QueryThoughts, RelationFilter, RelationKind, RoleClaim, RoleHandoff, RoleName,
+    RoleObservation, RoleRelease, ScopeReason, ScopeReference, SubmitRelation, SubmitThought,
+    SubscribeRelations, SubscribeThoughts, TextBody, ThoughtBody, ThoughtFilter, ThoughtKind,
+    Title, WirePath, WorkspaceGoal,
 };
 
 struct ActorFixture {
@@ -652,6 +653,131 @@ async fn typed_thought_query_uses_reader_without_writer() {
         TraceNode::REPLY_SUPERVISOR,
     ]));
     assert!(!response.trace().contains(TraceNode::SEMA_WRITER));
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn typed_thought_subscription_registers_and_returns_initial_snapshot() {
+    let fixture = ActorFixture::new().await;
+    let _written = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("Subscribe to typed goals"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await;
+
+    let response = fixture
+        .submit(MindRequest::SubscribeThoughts(SubscribeThoughts {
+            filter: ThoughtFilter::ByKind(ByThoughtKind {
+                kinds: vec![ThoughtKind::Goal],
+            }),
+        }))
+        .await;
+
+    let MindReply::SubscriptionAccepted(subscription) = response.reply().expect("reply exists")
+    else {
+        panic!("expected subscription accepted");
+    };
+
+    assert_eq!(subscription.subscription.as_str().len(), 3);
+    assert_eq!(subscription.initial_snapshot.len(), 1);
+    assert!(response.trace().contains_ordered(&[
+        TraceNode::MIND_ROOT,
+        TraceNode::INGRESS_PHASE,
+        TraceNode::DISPATCH_PHASE,
+        TraceNode::GRAPH_QUERY_FLOW,
+        TraceNode::VIEW_PHASE,
+        TraceNode::SUBSCRIPTION_SUPERVISOR,
+        TraceNode::STORE_SUPERVISOR,
+        TraceNode::GRAPH_STORE,
+        TraceNode::ID_MINT,
+        TraceNode::SEMA_READER,
+        TraceNode::SEMA_WRITER,
+        TraceNode::COMMIT,
+        TraceNode::REPLY_SUPERVISOR,
+    ]));
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn typed_relation_subscription_registers_and_returns_initial_snapshot() {
+    let fixture = ActorFixture::new().await;
+    let goal = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("Relate subscription target"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await;
+    let support = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("Relate subscription source"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await;
+
+    let MindReply::ThoughtCommitted(goal) = goal.reply().expect("goal reply exists") else {
+        panic!("expected goal commit");
+    };
+    let MindReply::ThoughtCommitted(support) = support.reply().expect("support reply exists")
+    else {
+        panic!("expected support commit");
+    };
+
+    let _relation = fixture
+        .submit(MindRequest::SubmitRelation(SubmitRelation {
+            kind: RelationKind::Supports,
+            source: support.record.clone(),
+            target: goal.record.clone(),
+            note: None,
+        }))
+        .await;
+    let response = fixture
+        .submit(MindRequest::SubscribeRelations(SubscribeRelations {
+            filter: RelationFilter::ByKind(ByRelationKind {
+                kinds: vec![RelationKind::Supports],
+            }),
+        }))
+        .await;
+
+    let MindReply::SubscriptionAccepted(subscription) = response.reply().expect("reply exists")
+    else {
+        panic!("expected subscription accepted");
+    };
+
+    assert_eq!(subscription.subscription.as_str().len(), 3);
+    assert_eq!(subscription.initial_snapshot.len(), 1);
+    assert!(response.trace().contains_ordered(&[
+        TraceNode::MIND_ROOT,
+        TraceNode::INGRESS_PHASE,
+        TraceNode::DISPATCH_PHASE,
+        TraceNode::GRAPH_QUERY_FLOW,
+        TraceNode::VIEW_PHASE,
+        TraceNode::SUBSCRIPTION_SUPERVISOR,
+        TraceNode::STORE_SUPERVISOR,
+        TraceNode::GRAPH_STORE,
+        TraceNode::ID_MINT,
+        TraceNode::SEMA_READER,
+        TraceNode::SEMA_WRITER,
+        TraceNode::COMMIT,
+        TraceNode::REPLY_SUPERVISOR,
+    ]));
 
     fixture.stop().await;
 }

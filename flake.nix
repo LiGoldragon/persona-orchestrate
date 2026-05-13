@@ -89,6 +89,27 @@
               cargoTestExtraArgs = "--test daemon_wire mind_typed_thought_graph_survives_process_restart";
             }
           );
+          mind-typed-thought-subscription-registers-and-returns-initial-snapshot = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test actor_topology typed_thought_subscription_registers_and_returns_initial_snapshot";
+            }
+          );
+          mind-typed-relation-subscription-registers-and-returns-initial-snapshot = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test actor_topology typed_relation_subscription_registers_and_returns_initial_snapshot";
+            }
+          );
+          mind-thought-subscription-is-durable-table-data = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "thought_subscription_is_durable_table_data";
+            }
+          );
           cli = craneLib.cargoTest (
             commonArgs
             // {

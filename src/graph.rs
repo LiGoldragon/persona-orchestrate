@@ -3,7 +3,7 @@ use signal_persona_mind::{
     ByThoughtTimeRange, CompositeRelationFilter, CompositeThoughtFilter, DisplayId, MindReply,
     MindRequestUnimplemented, MindUnimplementedReason, QueryRelations, QueryThoughts, Relation,
     RelationCommitted, RelationFilter, RelationKind, RelationList, SubmitRelation, SubmitThought,
-    Thought, ThoughtCommitted, ThoughtFilter, ThoughtList,
+    SubscriptionAccepted, Thought, ThoughtCommitted, ThoughtFilter, ThoughtList,
 };
 
 use crate::{MindEnvelope, MindTables, Result};
@@ -55,23 +55,23 @@ impl<'tables> MindGraphLedger<'tables> {
         }
     }
 
-    pub(crate) fn subscribe_thoughts(&self, envelope: MindEnvelope) -> MindReply {
+    pub(crate) fn subscribe_thoughts(&self, envelope: MindEnvelope) -> Result<MindReply> {
         let MindEnvelope { request, .. } = envelope;
         match request {
-            signal_persona_mind::MindRequest::SubscribeThoughts(_subscription) => {
-                Self::unimplemented()
+            signal_persona_mind::MindRequest::SubscribeThoughts(subscription) => {
+                self.open_thought_subscription(subscription)
             }
-            _ => Self::unimplemented(),
+            _ => Ok(Self::unimplemented()),
         }
     }
 
-    pub(crate) fn subscribe_relations(&self, envelope: MindEnvelope) -> MindReply {
+    pub(crate) fn subscribe_relations(&self, envelope: MindEnvelope) -> Result<MindReply> {
         let MindEnvelope { request, .. } = envelope;
         match request {
-            signal_persona_mind::MindRequest::SubscribeRelations(_subscription) => {
-                Self::unimplemented()
+            signal_persona_mind::MindRequest::SubscribeRelations(subscription) => {
+                self.open_relation_subscription(subscription)
             }
-            _ => Self::unimplemented(),
+            _ => Ok(Self::unimplemented()),
         }
     }
 
@@ -130,6 +130,45 @@ impl<'tables> MindGraphLedger<'tables> {
         Ok(MindReply::RelationList(RelationList {
             relations: limited.records,
             has_more: limited.has_more,
+        }))
+    }
+
+    fn open_thought_subscription(
+        &self,
+        subscription: signal_persona_mind::SubscribeThoughts,
+    ) -> Result<MindReply> {
+        let record = self.tables.append_thought_subscription(subscription)?;
+        let relations = self.tables.relation_records()?;
+        let selector = ThoughtSelector::new(record.filter, relations);
+        let initial_snapshot = self
+            .tables
+            .thought_records()?
+            .into_iter()
+            .filter(|thought| selector.accepts(thought))
+            .map(signal_persona_mind::MindSnapshot::Thought)
+            .collect();
+        Ok(MindReply::SubscriptionAccepted(SubscriptionAccepted {
+            subscription: record.subscription,
+            initial_snapshot,
+        }))
+    }
+
+    fn open_relation_subscription(
+        &self,
+        subscription: signal_persona_mind::SubscribeRelations,
+    ) -> Result<MindReply> {
+        let record = self.tables.append_relation_subscription(subscription)?;
+        let selector = RelationSelector::new(record.filter);
+        let initial_snapshot = self
+            .tables
+            .relation_records()?
+            .into_iter()
+            .filter(|relation| selector.accepts(relation))
+            .map(signal_persona_mind::MindSnapshot::Relation)
+            .collect();
+        Ok(MindReply::SubscriptionAccepted(SubscriptionAccepted {
+            subscription: record.subscription,
+            initial_snapshot,
         }))
     }
 

@@ -3,13 +3,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use sema::{Schema, SchemaVersion, Sema, Table};
 use signal_persona_mind::{
     Activity, ActorName, RecordId, Relation, RelationId, RoleName, ScopeReason, ScopeReference,
-    SubmitRelation, SubmitThought, Thought, TimestampNanos,
+    SubmitRelation, SubmitThought, SubscribeRelations, SubscribeThoughts, SubscriptionId, Thought,
+    TimestampNanos,
 };
 
 use crate::{MemoryGraph, Result, StoreLocation};
 
 const MIND_SCHEMA: Schema = Schema {
-    version: SchemaVersion::new(4),
+    version: SchemaVersion::new(5),
 };
 
 const CLAIMS: Table<&'static str, StoredClaim> = Table::new("claims");
@@ -20,10 +21,16 @@ const THOUGHTS: Table<&'static str, Thought> = Table::new("thoughts");
 const RELATIONS: Table<&'static str, Relation> = Table::new("relations");
 const THOUGHT_NEXT_SLOT: Table<&'static str, u64> = Table::new("thought_next_slot");
 const RELATION_NEXT_SLOT: Table<&'static str, u64> = Table::new("relation_next_slot");
+const THOUGHT_SUBSCRIPTIONS: Table<&'static str, StoredThoughtSubscription> =
+    Table::new("thought_subscriptions");
+const RELATION_SUBSCRIPTIONS: Table<&'static str, StoredRelationSubscription> =
+    Table::new("relation_subscriptions");
+const SUBSCRIPTION_NEXT_SLOT: Table<&'static str, u64> = Table::new("subscription_next_slot");
 const ACTIVITY_NEXT_SLOT_KEY: &str = "next";
 const MEMORY_GRAPH_KEY: &str = "current";
 const THOUGHT_NEXT_SLOT_KEY: &str = "next";
 const RELATION_NEXT_SLOT_KEY: &str = "next";
+const SUBSCRIPTION_NEXT_SLOT_KEY: &str = "next";
 
 pub struct MindTables {
     database: Sema,
@@ -43,6 +50,18 @@ pub struct StoredActivity {
     pub scope: ScopeReference,
     pub reason: ScopeReason,
     pub stamped_at: TimestampNanos,
+}
+
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StoredThoughtSubscription {
+    pub subscription: SubscriptionId,
+    pub filter: signal_persona_mind::ThoughtFilter,
+}
+
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StoredRelationSubscription {
+    pub subscription: SubscriptionId,
+    pub filter: signal_persona_mind::RelationFilter,
 }
 
 impl StoredActivity {
@@ -98,6 +117,9 @@ impl MindTables {
             RELATIONS.ensure(transaction)?;
             THOUGHT_NEXT_SLOT.ensure(transaction)?;
             RELATION_NEXT_SLOT.ensure(transaction)?;
+            THOUGHT_SUBSCRIPTIONS.ensure(transaction)?;
+            RELATION_SUBSCRIPTIONS.ensure(transaction)?;
+            SUBSCRIPTION_NEXT_SLOT.ensure(transaction)?;
             Ok(())
         })?;
         Ok(Self { database })
@@ -250,6 +272,48 @@ impl MindTables {
         })?)
     }
 
+    pub(crate) fn append_thought_subscription(
+        &self,
+        subscription: SubscribeThoughts,
+    ) -> Result<StoredThoughtSubscription> {
+        let slot = self.next_subscription_slot()?;
+        let record = StoredThoughtSubscription {
+            subscription: SubscriptionId::new(CompactGraphId::new(slot.value()).into_string()),
+            filter: subscription.filter,
+        };
+        self.database.write(|transaction| {
+            THOUGHT_SUBSCRIPTIONS.insert(transaction, record.subscription.as_str(), &record)?;
+            SUBSCRIPTION_NEXT_SLOT.insert(
+                transaction,
+                SUBSCRIPTION_NEXT_SLOT_KEY,
+                &slot.next_value(),
+            )?;
+            Ok(())
+        })?;
+        Ok(record)
+    }
+
+    pub(crate) fn append_relation_subscription(
+        &self,
+        subscription: SubscribeRelations,
+    ) -> Result<StoredRelationSubscription> {
+        let slot = self.next_subscription_slot()?;
+        let record = StoredRelationSubscription {
+            subscription: SubscriptionId::new(CompactGraphId::new(slot.value()).into_string()),
+            filter: subscription.filter,
+        };
+        self.database.write(|transaction| {
+            RELATION_SUBSCRIPTIONS.insert(transaction, record.subscription.as_str(), &record)?;
+            SUBSCRIPTION_NEXT_SLOT.insert(
+                transaction,
+                SUBSCRIPTION_NEXT_SLOT_KEY,
+                &slot.next_value(),
+            )?;
+            Ok(())
+        })?;
+        Ok(record)
+    }
+
     fn next_activity_slot(&self) -> Result<ActivitySlot> {
         let stored = self
             .database
@@ -278,6 +342,30 @@ impl MindTables {
             Some(next_slot) => Ok(GraphSlot::new(next_slot)),
             None => Ok(GraphSlot::after_records(self.relation_records()?.len())),
         }
+    }
+
+    fn next_subscription_slot(&self) -> Result<GraphSlot> {
+        let stored = self.database.read(|transaction| {
+            SUBSCRIPTION_NEXT_SLOT.get(transaction, SUBSCRIPTION_NEXT_SLOT_KEY)
+        })?;
+        match stored {
+            Some(next_slot) => Ok(GraphSlot::new(next_slot)),
+            None => Ok(GraphSlot::after_records(
+                self.thought_subscription_count()? + self.relation_subscription_count()?,
+            )),
+        }
+    }
+
+    fn thought_subscription_count(&self) -> Result<usize> {
+        Ok(self
+            .database
+            .read(|transaction| Ok(THOUGHT_SUBSCRIPTIONS.iter(transaction)?.len()))?)
+    }
+
+    fn relation_subscription_count(&self) -> Result<usize> {
+        Ok(self
+            .database
+            .read(|transaction| Ok(RELATION_SUBSCRIPTIONS.iter(transaction)?.len()))?)
     }
 
     fn expect_thought(&self, record: &RecordId) -> Result<()> {
@@ -425,5 +513,51 @@ impl ScopeKey {
 
     fn into_string(self) -> String {
         self.value
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use signal_persona_mind::{ByThoughtKind, ThoughtFilter, ThoughtKind};
+
+    #[test]
+    fn thought_subscription_is_durable_table_data() {
+        let store = StoreLocation::new(unique_store_path("thought-subscription-durable"));
+        let tables = MindTables::open(&store).expect("tables open");
+        let stored = tables
+            .append_thought_subscription(SubscribeThoughts {
+                filter: ThoughtFilter::ByKind(ByThoughtKind {
+                    kinds: vec![ThoughtKind::Goal],
+                }),
+            })
+            .expect("subscription appends");
+        drop(tables);
+
+        let reopened = MindTables::open(&store).expect("tables reopen");
+        let persisted = reopened
+            .database
+            .read(|transaction| {
+                THOUGHT_SUBSCRIPTIONS.get(transaction, stored.subscription.as_str())
+            })
+            .expect("subscription lookup")
+            .expect("subscription stored");
+
+        assert_eq!(persisted, stored);
+        assert_eq!(persisted.subscription.as_str().len(), 3);
+    }
+
+    fn unique_store_path(name: &str) -> String {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        std::env::temp_dir()
+            .join(format!(
+                "persona-mind-{name}-{}-{stamp}.redb",
+                std::process::id()
+            ))
+            .to_string_lossy()
+            .to_string()
     }
 }
