@@ -190,7 +190,13 @@ impl ThoughtSelector {
     }
 
     fn accepts(&self, thought: &Thought) -> bool {
-        self.accepts_filter(thought, &self.filter)
+        !self.is_superseded(thought) && self.accepts_filter(thought, &self.filter)
+    }
+
+    fn is_superseded(&self, thought: &Thought) -> bool {
+        self.relations.iter().any(|relation| {
+            relation.kind == RelationKind::Supersedes && relation.target == thought.id
+        })
     }
 
     fn accepts_filter(&self, thought: &Thought, filter: &ThoughtFilter) -> bool {

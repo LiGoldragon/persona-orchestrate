@@ -70,4 +70,12 @@ pub enum Error {
 
     #[error("mind graph relation references missing thought: {record}")]
     MindGraphMissingRecord { record: String },
+
+    #[error(
+        "mind graph supersedes relation kind mismatch: source {source_kind:?}, target {target_kind:?}"
+    )]
+    MindGraphSupersedesKindMismatch {
+        source_kind: ThoughtKind,
+        target_kind: ThoughtKind,
+    },
 }

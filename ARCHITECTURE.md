@@ -398,6 +398,12 @@ This repo does not own:
   records are rejected before persistence.
 - `SubmitRelation` must reference existing thought IDs; missing endpoints are
   rejected before persistence.
+- `Supersedes` relations must point from a newer Thought to an older Thought
+  of the same `ThoughtKind`; cross-kind supersession is rejected before
+  persistence.
+- Current thought queries exclude Thoughts that are the target of a
+  `Supersedes` relation. The old Thought remains in `mind.redb`; correction is
+  a view rule, not in-place mutation.
 - Typed graph subscriptions append filter records to `thought_subscriptions`
   or `relation_subscriptions` and return an initial snapshot that is computed
   from durable graph tables.
@@ -483,6 +489,8 @@ constraints:
 | `typed_thought_runs_through_graph_actor_lane_and_store_mints_id` | typed graph writes pass through graph actors and mind mints compact IDs. |
 | `typed_thought_query_uses_reader_without_writer` | typed graph queries are read-only. |
 | `typed_relation_rejects_missing_thought_endpoint` | relation endpoints are real thought IDs, not unchecked strings. |
+| `superseded_thought_excluded_from_current_query` | correction is a `Supersedes` relation and current queries hide the old target. |
+| `supersedes_relation_rejects_different_thought_kinds` | cross-kind supersession is rejected before persistence. |
 | `typed_thought_subscription_registers_and_returns_initial_snapshot` | thought subscriptions persist a filter and return matching durable thoughts. |
 | `typed_relation_subscription_registers_and_returns_initial_snapshot` | relation subscriptions persist a filter and return matching durable relations. |
 | `thought_subscription_is_durable_table_data` | subscription rows survive closing and reopening the Sema database handle. |

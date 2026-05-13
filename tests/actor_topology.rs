@@ -7,12 +7,13 @@ use persona_mind::{
     SubmitEnvelope,
 };
 use signal_persona_mind::{
-    ActivityFilter, ActivityQuery, ActivitySubmission, ActorName, ByRelationKind, ByThoughtKind,
-    GoalBody, GoalScope, ItemKind, ItemPriority, MindReply, MindRequest, Opening, Query, QueryKind,
-    QueryLimit, QueryThoughts, RelationFilter, RelationKind, RoleClaim, RoleHandoff, RoleName,
+    ActiveClaim, ActivityFilter, ActivityQuery, ActivitySubmission, ActorName, ByRelationKind,
+    ByThoughtKind, ClaimActivity, ClaimBody, ClaimScope, GoalBody, GoalScope, ItemKind,
+    ItemPriority, MindReply, MindRequest, Opening, PathClaimScope, Query, QueryKind, QueryLimit,
+    QueryRelations, QueryThoughts, RelationFilter, RelationKind, RoleClaim, RoleHandoff, RoleName,
     RoleObservation, RoleRelease, ScopeReason, ScopeReference, SubmitRelation, SubmitThought,
     SubscribeRelations, SubscribeThoughts, TextBody, ThoughtBody, ThoughtFilter, ThoughtKind,
-    Title, WirePath, WorkspaceGoal,
+    TimestampNanos, Title, WirePath, WorkspaceGoal,
 };
 
 struct ActorFixture {
@@ -778,6 +779,139 @@ async fn typed_relation_subscription_registers_and_returns_initial_snapshot() {
         TraceNode::COMMIT,
         TraceNode::REPLY_SUPERVISOR,
     ]));
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn superseded_thought_excluded_from_current_query() {
+    let fixture = ActorFixture::new().await;
+    let old = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("Old correction target"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await;
+    let new = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("New correction source"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await;
+
+    let MindReply::ThoughtCommitted(old) = old.reply().expect("old reply exists") else {
+        panic!("expected old thought commit");
+    };
+    let MindReply::ThoughtCommitted(new) = new.reply().expect("new reply exists") else {
+        panic!("expected new thought commit");
+    };
+
+    let relation = fixture
+        .submit(MindRequest::SubmitRelation(SubmitRelation {
+            kind: RelationKind::Supersedes,
+            source: new.record.clone(),
+            target: old.record.clone(),
+            note: Some(TextBody::new("correction witness")),
+        }))
+        .await;
+    let query = fixture
+        .submit(MindRequest::QueryThoughts(QueryThoughts {
+            filter: ThoughtFilter::ByKind(ByThoughtKind {
+                kinds: vec![ThoughtKind::Goal],
+            }),
+            limit: 10,
+        }))
+        .await;
+
+    let MindReply::RelationCommitted(_) = relation.reply().expect("relation reply exists") else {
+        panic!("expected supersedes relation commit");
+    };
+    let MindReply::ThoughtList(list) = query.reply().expect("query reply exists") else {
+        panic!("expected thought list");
+    };
+
+    assert_eq!(list.thoughts.len(), 1);
+    assert_eq!(list.thoughts[0].id, new.record);
+    assert_ne!(list.thoughts[0].id, old.record);
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn supersedes_relation_rejects_different_thought_kinds() {
+    let fixture = ActorFixture::new().await;
+    let goal = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("Correction target kind"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await;
+    let claim = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Claim,
+            body: ThoughtBody::Claim(ClaimBody {
+                claimed_by: ActorName::new("operator"),
+                scope: ClaimScope::Paths(PathClaimScope {
+                    paths: vec![
+                        WirePath::from_absolute_path("/git/github.com/LiGoldragon/persona-mind")
+                            .expect("absolute path"),
+                    ],
+                }),
+                role: RoleName::Operator,
+                activity: ClaimActivity::Active(ActiveClaim {
+                    started_at: TimestampNanos::new(1),
+                }),
+            }),
+        }))
+        .await;
+
+    let MindReply::ThoughtCommitted(goal) = goal.reply().expect("goal reply exists") else {
+        panic!("expected goal commit");
+    };
+    let MindReply::ThoughtCommitted(claim) = claim.reply().expect("claim reply exists") else {
+        panic!("expected claim commit");
+    };
+
+    let rejected = fixture
+        .submit(MindRequest::SubmitRelation(SubmitRelation {
+            kind: RelationKind::Supersedes,
+            source: claim.record.clone(),
+            target: goal.record.clone(),
+            note: None,
+        }))
+        .await;
+    let relations = fixture
+        .submit(MindRequest::QueryRelations(QueryRelations {
+            filter: RelationFilter::ByKind(ByRelationKind {
+                kinds: vec![RelationKind::Supersedes],
+            }),
+            limit: 10,
+        }))
+        .await;
+
+    let MindReply::Rejection(_) = rejected.reply().expect("rejection reply exists") else {
+        panic!("expected typed rejection");
+    };
+    let MindReply::RelationList(list) = relations.reply().expect("relations reply exists") else {
+        panic!("expected relation list");
+    };
+
+    assert!(list.relations.is_empty());
 
     fixture.stop().await;
 }

@@ -2,9 +2,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use sema::{Schema, SchemaVersion, Sema, Table};
 use signal_persona_mind::{
-    Activity, ActorName, RecordId, Relation, RelationId, RoleName, ScopeReason, ScopeReference,
-    SubmitRelation, SubmitThought, SubscribeRelations, SubscribeThoughts, SubscriptionId, Thought,
-    TimestampNanos,
+    Activity, ActorName, RecordId, Relation, RelationId, RelationKind, RoleName, ScopeReason,
+    ScopeReference, SubmitRelation, SubmitThought, SubscribeRelations, SubscribeThoughts,
+    SubscriptionId, Thought, TimestampNanos,
 };
 
 use crate::{MemoryGraph, Result, StoreLocation};
@@ -230,8 +230,9 @@ impl MindTables {
         actor: ActorName,
         submission: SubmitRelation,
     ) -> Result<Relation> {
-        self.expect_thought(&submission.source)?;
-        self.expect_thought(&submission.target)?;
+        let source = self.read_thought(&submission.source)?;
+        let target = self.read_thought(&submission.target)?;
+        Self::validate_relation_kind(&submission.kind, &source, &target)?;
 
         let slot = self.next_relation_slot()?;
         let relation = Relation {
@@ -368,17 +369,26 @@ impl MindTables {
             .read(|transaction| Ok(RELATION_SUBSCRIPTIONS.iter(transaction)?.len()))?)
     }
 
-    fn expect_thought(&self, record: &RecordId) -> Result<()> {
-        let exists = self
-            .database
+    fn read_thought(&self, record: &RecordId) -> Result<Thought> {
+        self.database
             .read(|transaction| THOUGHTS.get(transaction, record.as_str()))?
-            .is_some();
-        if exists {
-            Ok(())
-        } else {
-            Err(crate::Error::MindGraphMissingRecord {
+            .ok_or_else(|| crate::Error::MindGraphMissingRecord {
                 record: record.as_str().to_string(),
             })
+    }
+
+    fn validate_relation_kind(
+        kind: &RelationKind,
+        source: &Thought,
+        target: &Thought,
+    ) -> Result<()> {
+        if *kind == RelationKind::Supersedes && source.kind != target.kind {
+            Err(crate::Error::MindGraphSupersedesKindMismatch {
+                source_kind: source.kind,
+                target_kind: target.kind,
+            })
+        } else {
+            Ok(())
         }
     }
 }

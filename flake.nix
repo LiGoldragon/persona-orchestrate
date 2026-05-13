@@ -89,6 +89,20 @@
               cargoTestExtraArgs = "--test daemon_wire mind_typed_thought_graph_survives_process_restart";
             }
           );
+          mind-superseded-thought-excluded-from-current-query = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test actor_topology superseded_thought_excluded_from_current_query";
+            }
+          );
+          mind-supersedes-rejects-different-thought-kinds = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test actor_topology supersedes_relation_rejects_different_thought_kinds";
+            }
+          );
           mind-typed-thought-subscription-registers-and-returns-initial-snapshot = craneLib.cargoTest (
             commonArgs
             // {
