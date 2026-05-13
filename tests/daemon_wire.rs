@@ -2,9 +2,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use persona_mind::{MindClient, MindDaemon, MindDaemonEndpoint, MindFrameCodec, StoreLocation};
 use signal_persona_mind::{
-    ActorName, Frame, FrameBody, ItemKind, ItemPriority, MindReply, MindRequest, Opening, Query,
-    QueryKind, QueryLimit, RoleClaim, RoleName, RoleObservation, ScopeReason, ScopeReference,
-    TextBody, Title, WirePath,
+    ActorName, ByRelationKind, ByThoughtKind, Frame, FrameBody, GoalBody, GoalScope, ItemKind,
+    ItemPriority, MindReply, MindRequest, Opening, Query, QueryKind, QueryLimit, QueryRelations,
+    QueryThoughts, RelationFilter, RelationKind, RoleClaim, RoleName, RoleObservation, ScopeReason,
+    ScopeReference, SubmitRelation, SubmitThought, TextBody, ThoughtBody, ThoughtFilter,
+    ThoughtKind, Title, WirePath, WorkspaceGoal,
 };
 use tokio::net::UnixStream;
 
@@ -270,4 +272,153 @@ async fn mind_memory_graph_survives_process_restart() {
 
     assert_eq!(view.items.len(), 1);
     assert_eq!(view.items[0].title, Title::new("Durable mind memory"));
+}
+
+#[tokio::test]
+async fn mind_typed_thought_graph_survives_process_restart() {
+    let fixture = SocketFixture::new("typed-thought-restart");
+    let record;
+
+    {
+        let daemon = MindDaemon::new(fixture.endpoint(), fixture.store())
+            .bind()
+            .await
+            .expect("first daemon binds");
+        let endpoint = daemon.endpoint().clone();
+        let server = tokio::spawn(async move { daemon.serve_one().await });
+
+        let client = MindClient::new(endpoint, ActorName::new("operator"));
+        let reply = client
+            .submit(MindRequest::SubmitThought(SubmitThought {
+                kind: ThoughtKind::Goal,
+                body: ThoughtBody::Goal(GoalBody {
+                    description: TextBody::new("Persist typed graph thought"),
+                    scope: GoalScope::Workspace(WorkspaceGoal {
+                        workspace: TextBody::new("primary"),
+                    }),
+                }),
+            }))
+            .await
+            .expect("thought committed");
+
+        server
+            .await
+            .expect("first daemon joins")
+            .expect("first daemon serves thought");
+
+        let MindReply::ThoughtCommitted(receipt) = reply else {
+            panic!("expected thought commit");
+        };
+        record = receipt.record;
+        assert_eq!(record.as_str().len(), 3);
+    }
+
+    let daemon = MindDaemon::new(fixture.endpoint(), fixture.store())
+        .bind()
+        .await
+        .expect("second daemon binds");
+    let endpoint = daemon.endpoint().clone();
+    let server = tokio::spawn(async move { daemon.serve_one().await });
+
+    let client = MindClient::new(endpoint, ActorName::new("operator"));
+    let reply = client
+        .submit(MindRequest::QueryThoughts(QueryThoughts {
+            filter: ThoughtFilter::ByKind(ByThoughtKind {
+                kinds: vec![ThoughtKind::Goal],
+            }),
+            limit: 10,
+        }))
+        .await
+        .expect("query reads durable typed graph");
+
+    server
+        .await
+        .expect("second daemon joins")
+        .expect("second daemon serves query");
+
+    let MindReply::ThoughtList(list) = reply else {
+        panic!("expected thought list");
+    };
+    assert_eq!(list.thoughts.len(), 1);
+    assert_eq!(list.thoughts[0].id, record);
+    assert_eq!(list.thoughts[0].kind, ThoughtKind::Goal);
+}
+
+#[tokio::test]
+async fn mind_typed_relation_round_trip_uses_committed_thought_ids() {
+    let fixture = SocketFixture::new("typed-relation");
+    let daemon = MindDaemon::new(fixture.endpoint(), fixture.store())
+        .bind()
+        .await
+        .expect("daemon binds");
+    let endpoint = daemon.endpoint().clone();
+    let server = tokio::spawn(async move { daemon.serve_count(4).await });
+    let client = MindClient::new(endpoint, ActorName::new("operator"));
+
+    let goal = client
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("Route relation through graph store"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await
+        .expect("goal committed");
+    let memory = client
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("Second thought endpoint"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await
+        .expect("second thought committed");
+
+    let MindReply::ThoughtCommitted(goal) = goal else {
+        panic!("expected goal commit");
+    };
+    let MindReply::ThoughtCommitted(memory) = memory else {
+        panic!("expected second thought commit");
+    };
+
+    let relation = client
+        .submit(MindRequest::SubmitRelation(SubmitRelation {
+            kind: RelationKind::Supports,
+            source: memory.record.clone(),
+            target: goal.record.clone(),
+            note: Some(TextBody::new("typed relation witness")),
+        }))
+        .await
+        .expect("relation committed");
+    let list = client
+        .submit(MindRequest::QueryRelations(QueryRelations {
+            filter: RelationFilter::ByKind(ByRelationKind {
+                kinds: vec![RelationKind::Supports],
+            }),
+            limit: 10,
+        }))
+        .await
+        .expect("relations queried");
+
+    server
+        .await
+        .expect("daemon joins")
+        .expect("daemon serves relation sequence");
+
+    let MindReply::RelationCommitted(receipt) = relation else {
+        panic!("expected relation commit");
+    };
+    let MindReply::RelationList(list) = list else {
+        panic!("expected relation list");
+    };
+    assert_eq!(list.relations.len(), 1);
+    assert_eq!(list.relations[0].id, receipt.relation);
+    assert_eq!(list.relations[0].source, memory.record);
+    assert_eq!(list.relations[0].target, goal.record);
 }

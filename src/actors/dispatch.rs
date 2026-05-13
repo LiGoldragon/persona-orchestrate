@@ -1,7 +1,9 @@
 use kameo::actor::{Actor, ActorRef};
 use kameo::error::Infallible;
 use kameo::message::{Context, Message};
-use signal_persona_mind::MindRequest;
+use signal_persona_mind::{
+    MindReply, MindRequest, MindRequestUnimplemented, MindUnimplementedReason,
+};
 
 use crate::{MindEnvelope, Result as CrateResult};
 
@@ -51,6 +53,30 @@ impl DispatchPhase {
         trace.record(TraceNode::REQUEST_DISPATCHER, TraceAction::MessageReceived);
 
         let pipeline = match envelope.request() {
+            MindRequest::SubmitThought(_) => {
+                trace.record(TraceNode::GRAPH_FLOW, TraceAction::MessageReceived);
+                self.submit_thought(envelope, trace).await?
+            }
+            MindRequest::SubmitRelation(_) => {
+                trace.record(TraceNode::GRAPH_FLOW, TraceAction::MessageReceived);
+                self.submit_relation(envelope, trace).await?
+            }
+            MindRequest::QueryThoughts(_) => {
+                trace.record(TraceNode::GRAPH_QUERY_FLOW, TraceAction::MessageReceived);
+                self.query_thoughts(envelope, trace).await?
+            }
+            MindRequest::QueryRelations(_) => {
+                trace.record(TraceNode::GRAPH_QUERY_FLOW, TraceAction::MessageReceived);
+                self.query_relations(envelope, trace).await?
+            }
+            MindRequest::SubscribeThoughts(_) => {
+                trace.record(TraceNode::GRAPH_QUERY_FLOW, TraceAction::MessageReceived);
+                self.subscribe_thoughts(envelope, trace).await?
+            }
+            MindRequest::SubscribeRelations(_) => {
+                trace.record(TraceNode::GRAPH_QUERY_FLOW, TraceAction::MessageReceived);
+                self.subscribe_relations(envelope, trace).await?
+            }
             MindRequest::Opening(_)
             | MindRequest::NoteSubmission(_)
             | MindRequest::Link(_)
@@ -83,6 +109,12 @@ impl DispatchPhase {
                 trace.record(TraceNode::HANDOFF_FLOW, TraceAction::MessageReceived);
                 self.apply_handoff(envelope, trace).await?
             }
+            MindRequest::AdjudicationRequest(_)
+            | MindRequest::ChannelGrant(_)
+            | MindRequest::ChannelExtend(_)
+            | MindRequest::ChannelRetract(_)
+            | MindRequest::AdjudicationDeny(_)
+            | MindRequest::ChannelList(_) => self.unimplemented(trace),
         };
 
         self.shape_reply(pipeline).await
@@ -95,6 +127,72 @@ impl DispatchPhase {
     ) -> CrateResult<PipelineReply> {
         self.domain
             .ask(domain::ApplyMemory { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn submit_thought(
+        &self,
+        envelope: MindEnvelope,
+        trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        self.domain
+            .ask(domain::SubmitThought { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn submit_relation(
+        &self,
+        envelope: MindEnvelope,
+        trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        self.domain
+            .ask(domain::SubmitRelation { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn query_thoughts(
+        &self,
+        envelope: MindEnvelope,
+        trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        self.view
+            .ask(view::QueryThoughts { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn query_relations(
+        &self,
+        envelope: MindEnvelope,
+        trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        self.view
+            .ask(view::QueryRelations { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn subscribe_thoughts(
+        &self,
+        envelope: MindEnvelope,
+        trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        self.view
+            .ask(view::SubscribeThoughts { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn subscribe_relations(
+        &self,
+        envelope: MindEnvelope,
+        trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        self.view
+            .ask(view::SubscribeRelations { envelope, trace })
             .await
             .map_err(|error| crate::Error::ActorCall(error.to_string()))
     }
@@ -173,6 +271,18 @@ impl DispatchPhase {
             })
             .await
             .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    fn unimplemented(&self, mut trace: ActorTrace) -> PipelineReply {
+        trace.record(TraceNode::ERROR_SHAPER, TraceAction::MessageReplied);
+        PipelineReply::new(
+            Some(MindReply::MindRequestUnimplemented(
+                MindRequestUnimplemented {
+                    reason: MindUnimplementedReason::NotInPrototypeScope,
+                },
+            )),
+            trace,
+        )
     }
 }
 

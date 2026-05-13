@@ -1,3 +1,4 @@
+use signal_persona_mind::ThoughtKind;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -60,4 +61,13 @@ pub enum Error {
 
     #[error("expected one NOTA request argument, got {count}")]
     WrongRequestArgumentCount { count: usize },
+
+    #[error("mind graph thought kind mismatch: declared {declared:?}, body {actual:?}")]
+    MindGraphThoughtKindMismatch {
+        declared: ThoughtKind,
+        actual: ThoughtKind,
+    },
+
+    #[error("mind graph relation references missing thought: {record}")]
+    MindGraphMissingRecord { record: String },
 }

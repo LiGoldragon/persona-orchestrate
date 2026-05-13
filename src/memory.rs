@@ -126,7 +126,19 @@ impl MemoryGraph {
             | MindRequest::RoleHandoff(_)
             | MindRequest::RoleObservation(_)
             | MindRequest::ActivitySubmission(_)
-            | MindRequest::ActivityQuery(_) => None,
+            | MindRequest::ActivityQuery(_)
+            | MindRequest::SubmitThought(_)
+            | MindRequest::SubmitRelation(_)
+            | MindRequest::QueryThoughts(_)
+            | MindRequest::QueryRelations(_)
+            | MindRequest::SubscribeThoughts(_)
+            | MindRequest::SubscribeRelations(_)
+            | MindRequest::AdjudicationRequest(_)
+            | MindRequest::ChannelGrant(_)
+            | MindRequest::ChannelExtend(_)
+            | MindRequest::ChannelRetract(_)
+            | MindRequest::AdjudicationDeny(_)
+            | MindRequest::ChannelList(_) => None,
         }
     }
 

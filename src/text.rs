@@ -1593,6 +1593,19 @@ impl MindTextReply {
             contract::MindReply::Rejection(rejection) => {
                 Ok(Self::Rejection(Rejection::from_contract(rejection)))
             }
+            contract::MindReply::ThoughtCommitted(_)
+            | contract::MindReply::RelationCommitted(_)
+            | contract::MindReply::ThoughtList(_)
+            | contract::MindReply::RelationList(_)
+            | contract::MindReply::SubscriptionAccepted(_)
+            | contract::MindReply::SubscriptionEvent(_)
+            | contract::MindReply::AdjudicationReceipt(_)
+            | contract::MindReply::ChannelReceipt(_)
+            | contract::MindReply::AdjudicationDenyReceipt(_)
+            | contract::MindReply::ChannelListView(_)
+            | contract::MindReply::MindRequestUnimplemented(_) => Err(
+                crate::Error::UnexpectedFrame("mind reply has no MindTextReply projection"),
+            ),
         }
     }
 

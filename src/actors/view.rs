@@ -33,6 +33,26 @@ pub struct ReadActivity {
     pub trace: ActorTrace,
 }
 
+pub struct QueryThoughts {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
+pub struct QueryRelations {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
+pub struct SubscribeThoughts {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
+pub struct SubscribeRelations {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
 impl ViewPhase {
     fn new(store: ActorRef<store::StoreSupervisor>) -> Self {
         Self { store }
@@ -90,6 +110,80 @@ impl ViewPhase {
             .await
             .map_err(|error| crate::Error::ActorCall(error.to_string()))
     }
+
+    async fn query_thoughts(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        trace.record(TraceNode::VIEW_PHASE, TraceAction::MessageReceived);
+        trace.record(TraceNode::QUERY_SUPERVISOR, TraceAction::MessageReceived);
+        trace.record(TraceNode::QUERY_PLANNER, TraceAction::MessageReceived);
+        trace.record(TraceNode::THOUGHT_QUERY, TraceAction::MessageReceived);
+
+        let mut reply = self
+            .store
+            .ask(store::QueryThoughts { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))?;
+        reply
+            .trace
+            .record(TraceNode::QUERY_RESULT_SHAPER, TraceAction::MessageReceived);
+        Ok(reply)
+    }
+
+    async fn query_relations(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        trace.record(TraceNode::VIEW_PHASE, TraceAction::MessageReceived);
+        trace.record(TraceNode::QUERY_SUPERVISOR, TraceAction::MessageReceived);
+        trace.record(TraceNode::QUERY_PLANNER, TraceAction::MessageReceived);
+        trace.record(TraceNode::RELATION_QUERY, TraceAction::MessageReceived);
+
+        let mut reply = self
+            .store
+            .ask(store::QueryRelations { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))?;
+        reply
+            .trace
+            .record(TraceNode::QUERY_RESULT_SHAPER, TraceAction::MessageReceived);
+        Ok(reply)
+    }
+
+    async fn subscribe_thoughts(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        trace.record(TraceNode::VIEW_PHASE, TraceAction::MessageReceived);
+        trace.record(
+            TraceNode::SUBSCRIPTION_SUPERVISOR,
+            TraceAction::MessageReceived,
+        );
+        self.store
+            .ask(store::SubscribeThoughts { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn subscribe_relations(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        trace.record(TraceNode::VIEW_PHASE, TraceAction::MessageReceived);
+        trace.record(
+            TraceNode::SUBSCRIPTION_SUPERVISOR,
+            TraceAction::MessageReceived,
+        );
+        self.store
+            .ask(store::SubscribeRelations { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
 }
 
 impl Actor for ViewPhase {
@@ -143,6 +237,72 @@ impl Message<ReadActivity> for ViewPhase {
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         match self.read_activity(message.envelope, message.trace).await {
+            Ok(reply) => reply,
+            Err(_error) => PipelineReply::new(None, ActorTrace::new()),
+        }
+    }
+}
+
+impl Message<QueryThoughts> for ViewPhase {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: QueryThoughts,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        match self.query_thoughts(message.envelope, message.trace).await {
+            Ok(reply) => reply,
+            Err(_error) => PipelineReply::new(None, ActorTrace::new()),
+        }
+    }
+}
+
+impl Message<QueryRelations> for ViewPhase {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: QueryRelations,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        match self.query_relations(message.envelope, message.trace).await {
+            Ok(reply) => reply,
+            Err(_error) => PipelineReply::new(None, ActorTrace::new()),
+        }
+    }
+}
+
+impl Message<SubscribeThoughts> for ViewPhase {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: SubscribeThoughts,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        match self
+            .subscribe_thoughts(message.envelope, message.trace)
+            .await
+        {
+            Ok(reply) => reply,
+            Err(_error) => PipelineReply::new(None, ActorTrace::new()),
+        }
+    }
+}
+
+impl Message<SubscribeRelations> for ViewPhase {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: SubscribeRelations,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        match self
+            .subscribe_relations(message.envelope, message.trace)
+            .await
+        {
             Ok(reply) => reply,
             Err(_error) => PipelineReply::new(None, ActorTrace::new()),
         }

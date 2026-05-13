@@ -2,6 +2,7 @@ use kameo::actor::{Actor, ActorRef};
 use kameo::message::{Context, Message};
 use signal_persona_mind::{MindReply, MindRequest};
 
+use crate::graph::MindGraphLedger;
 use crate::{ActivityLedger, ClaimLedger, MemoryGraph, MindEnvelope, MindTables, StoreLocation};
 
 use super::persistence::PersistenceRejection;
@@ -33,6 +34,30 @@ pub(super) struct ApplyActivity {
 }
 
 pub(super) struct ReadActivity {
+    envelope: MindEnvelope,
+}
+
+pub(super) struct WriteThought {
+    envelope: MindEnvelope,
+}
+
+pub(super) struct WriteRelation {
+    envelope: MindEnvelope,
+}
+
+pub(super) struct ReadThoughts {
+    envelope: MindEnvelope,
+}
+
+pub(super) struct ReadRelations {
+    envelope: MindEnvelope,
+}
+
+pub(super) struct SubscribeThoughts {
+    envelope: MindEnvelope,
+}
+
+pub(super) struct SubscribeRelations {
     envelope: MindEnvelope,
 }
 
@@ -103,6 +128,42 @@ impl ApplyActivity {
 }
 
 impl ReadActivity {
+    pub(super) fn new(envelope: MindEnvelope) -> Self {
+        Self { envelope }
+    }
+}
+
+impl WriteThought {
+    pub(super) fn new(envelope: MindEnvelope) -> Self {
+        Self { envelope }
+    }
+}
+
+impl WriteRelation {
+    pub(super) fn new(envelope: MindEnvelope) -> Self {
+        Self { envelope }
+    }
+}
+
+impl ReadThoughts {
+    pub(super) fn new(envelope: MindEnvelope) -> Self {
+        Self { envelope }
+    }
+}
+
+impl ReadRelations {
+    pub(super) fn new(envelope: MindEnvelope) -> Self {
+        Self { envelope }
+    }
+}
+
+impl SubscribeThoughts {
+    pub(super) fn new(envelope: MindEnvelope) -> Self {
+        Self { envelope }
+    }
+}
+
+impl SubscribeRelations {
     pub(super) fn new(envelope: MindEnvelope) -> Self {
         Self { envelope }
     }
@@ -194,6 +255,54 @@ impl StoreKernel {
         };
 
         KernelReply::new(reply)
+    }
+
+    fn write_thought(&self, envelope: MindEnvelope) -> KernelReply {
+        let reply = MindGraphLedger::new(&self.tables)
+            .submit_thought(envelope)
+            .map(Some)
+            .unwrap_or_else(|error| Some(PersistenceRejection::reply(error)));
+
+        KernelReply::new(reply)
+    }
+
+    fn write_relation(&self, envelope: MindEnvelope) -> KernelReply {
+        let reply = MindGraphLedger::new(&self.tables)
+            .submit_relation(envelope)
+            .map(Some)
+            .unwrap_or_else(|error| Some(PersistenceRejection::reply(error)));
+
+        KernelReply::new(reply)
+    }
+
+    fn read_thoughts(&self, envelope: MindEnvelope) -> KernelReply {
+        let reply = MindGraphLedger::new(&self.tables)
+            .query_thoughts(envelope)
+            .map(Some)
+            .unwrap_or_else(|error| Some(PersistenceRejection::reply(error)));
+
+        KernelReply::new(reply)
+    }
+
+    fn read_relations(&self, envelope: MindEnvelope) -> KernelReply {
+        let reply = MindGraphLedger::new(&self.tables)
+            .query_relations(envelope)
+            .map(Some)
+            .unwrap_or_else(|error| Some(PersistenceRejection::reply(error)));
+
+        KernelReply::new(reply)
+    }
+
+    fn subscribe_thoughts(&self, envelope: MindEnvelope) -> KernelReply {
+        KernelReply::new(Some(
+            MindGraphLedger::new(&self.tables).subscribe_thoughts(envelope),
+        ))
+    }
+
+    fn subscribe_relations(&self, envelope: MindEnvelope) -> KernelReply {
+        KernelReply::new(Some(
+            MindGraphLedger::new(&self.tables).subscribe_relations(envelope),
+        ))
     }
 }
 
@@ -290,5 +399,77 @@ impl Message<ReadActivity> for StoreKernel {
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         self.read_activity(message.envelope)
+    }
+}
+
+impl Message<WriteThought> for StoreKernel {
+    type Reply = KernelReply;
+
+    async fn handle(
+        &mut self,
+        message: WriteThought,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.write_thought(message.envelope)
+    }
+}
+
+impl Message<WriteRelation> for StoreKernel {
+    type Reply = KernelReply;
+
+    async fn handle(
+        &mut self,
+        message: WriteRelation,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.write_relation(message.envelope)
+    }
+}
+
+impl Message<ReadThoughts> for StoreKernel {
+    type Reply = KernelReply;
+
+    async fn handle(
+        &mut self,
+        message: ReadThoughts,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.read_thoughts(message.envelope)
+    }
+}
+
+impl Message<ReadRelations> for StoreKernel {
+    type Reply = KernelReply;
+
+    async fn handle(
+        &mut self,
+        message: ReadRelations,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.read_relations(message.envelope)
+    }
+}
+
+impl Message<SubscribeThoughts> for StoreKernel {
+    type Reply = KernelReply;
+
+    async fn handle(
+        &mut self,
+        message: SubscribeThoughts,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.subscribe_thoughts(message.envelope)
+    }
+}
+
+impl Message<SubscribeRelations> for StoreKernel {
+    type Reply = KernelReply;
+
+    async fn handle(
+        &mut self,
+        message: SubscribeRelations,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.subscribe_relations(message.envelope)
     }
 }

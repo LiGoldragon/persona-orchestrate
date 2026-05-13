@@ -7,9 +7,11 @@ use persona_mind::{
     SubmitEnvelope,
 };
 use signal_persona_mind::{
-    ActivityFilter, ActivityQuery, ActivitySubmission, ActorName, ItemKind, ItemPriority,
-    MindReply, MindRequest, Opening, Query, QueryKind, QueryLimit, RoleClaim, RoleHandoff,
-    RoleName, RoleObservation, RoleRelease, ScopeReason, ScopeReference, TextBody, Title, WirePath,
+    ActivityFilter, ActivityQuery, ActivitySubmission, ActorName, ByThoughtKind, GoalBody,
+    GoalScope, ItemKind, ItemPriority, MindReply, MindRequest, Opening, Query, QueryKind,
+    QueryLimit, QueryThoughts, RoleClaim, RoleHandoff, RoleName, RoleObservation, RoleRelease,
+    ScopeReason, ScopeReference, SubmitRelation, SubmitThought, TextBody, ThoughtBody,
+    ThoughtFilter, ThoughtKind, Title, WirePath, WorkspaceGoal,
 };
 
 struct ActorFixture {
@@ -553,6 +555,124 @@ async fn activity_query_reads_recent_activity_without_writer() {
     assert!(response.trace().contains(TraceNode::RECENT_ACTIVITY_VIEW));
     assert!(response.trace().contains(TraceNode::SEMA_READER));
     assert!(!response.trace().contains(TraceNode::SEMA_WRITER));
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn typed_thought_runs_through_graph_actor_lane_and_store_mints_id() {
+    let fixture = ActorFixture::new().await;
+    let response = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("Make persona-mind replace lock files"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await;
+
+    let MindReply::ThoughtCommitted(receipt) = response.reply().expect("reply exists") else {
+        panic!("expected thought commit");
+    };
+
+    assert_eq!(receipt.record.as_str().len(), 3);
+    assert_eq!(receipt.display.as_str(), receipt.record.as_str());
+    assert!(!receipt.record.as_str().starts_with("item-"));
+    assert!(receipt.occurred_at.value() > 0);
+    assert!(response.trace().contains_ordered(&[
+        TraceNode::MIND_ROOT,
+        TraceNode::INGRESS_PHASE,
+        TraceNode::DISPATCH_PHASE,
+        TraceNode::GRAPH_FLOW,
+        TraceNode::DOMAIN_PHASE,
+        TraceNode::MIND_GRAPH_SUPERVISOR,
+        TraceNode::THOUGHT_COMMIT,
+        TraceNode::STORE_SUPERVISOR,
+        TraceNode::GRAPH_STORE,
+        TraceNode::ID_MINT,
+        TraceNode::CLOCK,
+        TraceNode::SEMA_WRITER,
+        TraceNode::COMMIT,
+        TraceNode::REPLY_SUPERVISOR,
+    ]));
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn typed_thought_query_uses_reader_without_writer() {
+    let fixture = ActorFixture::new().await;
+    let _written = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("Query typed mind graph"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await;
+
+    let response = fixture
+        .submit(MindRequest::QueryThoughts(QueryThoughts {
+            filter: ThoughtFilter::ByKind(ByThoughtKind {
+                kinds: vec![ThoughtKind::Goal],
+            }),
+            limit: 10,
+        }))
+        .await;
+
+    let MindReply::ThoughtList(list) = response.reply().expect("reply exists") else {
+        panic!("expected thought list");
+    };
+
+    assert_eq!(list.thoughts.len(), 1);
+    assert_eq!(list.thoughts[0].kind, ThoughtKind::Goal);
+    assert_eq!(
+        list.thoughts[0].author,
+        ActorName::new("operator-assistant")
+    );
+    assert!(!list.has_more);
+    assert!(response.trace().contains_ordered(&[
+        TraceNode::MIND_ROOT,
+        TraceNode::INGRESS_PHASE,
+        TraceNode::DISPATCH_PHASE,
+        TraceNode::GRAPH_QUERY_FLOW,
+        TraceNode::VIEW_PHASE,
+        TraceNode::QUERY_SUPERVISOR,
+        TraceNode::THOUGHT_QUERY,
+        TraceNode::STORE_SUPERVISOR,
+        TraceNode::GRAPH_STORE,
+        TraceNode::SEMA_READER,
+        TraceNode::QUERY_RESULT_SHAPER,
+        TraceNode::REPLY_SUPERVISOR,
+    ]));
+    assert!(!response.trace().contains(TraceNode::SEMA_WRITER));
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn typed_relation_rejects_missing_thought_endpoint() {
+    let fixture = ActorFixture::new().await;
+    let response = fixture
+        .submit(MindRequest::SubmitRelation(SubmitRelation {
+            kind: signal_persona_mind::RelationKind::Supports,
+            source: signal_persona_mind::RecordId::new("missing-source"),
+            target: signal_persona_mind::RecordId::new("missing-target"),
+            note: None,
+        }))
+        .await;
+
+    let MindReply::Rejection(_) = response.reply().expect("reply exists") else {
+        panic!("expected typed rejection");
+    };
+    assert!(response.trace().contains(TraceNode::GRAPH_FLOW));
+    assert!(response.trace().contains(TraceNode::GRAPH_STORE));
 
     fixture.stop().await;
 }

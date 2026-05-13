@@ -2,7 +2,8 @@ use std::ffi::OsString;
 use std::io::Write;
 use std::path::PathBuf;
 
-use signal_persona_mind::ActorName;
+use nota_codec::{Decoder, Encoder, NotaDecode, NotaEncode};
+use signal_persona_mind::{ActorName, MindReply, MindRequest};
 
 use crate::{
     Error, MindClient, MindDaemon, MindDaemonEndpoint, MindTextReply, MindTextRequest, Result,
@@ -88,7 +89,7 @@ impl DaemonCommand {
 pub struct SubmissionCommand {
     endpoint: MindDaemonEndpoint,
     actor: ActorName,
-    request: MindTextRequest,
+    request: MindRequest,
 }
 
 impl SubmissionCommand {
@@ -97,7 +98,7 @@ impl SubmissionCommand {
         I: IntoIterator<Item = OsString>,
     {
         let options = ParsedOptions::from_arguments(arguments)?;
-        let request = MindTextRequest::from_nota(&options.request()?)?;
+        let request = CommandRequest::from_nota(&options.request()?)?.into_request();
         Ok(Self {
             endpoint: options.endpoint()?,
             actor: options.actor()?,
@@ -106,12 +107,75 @@ impl SubmissionCommand {
     }
 
     async fn run(self, mut output: impl Write) -> Result<()> {
-        let request = self.request.into_request()?;
         let reply = MindClient::new(self.endpoint, self.actor)
-            .submit(request)
+            .submit(self.request)
             .await?;
-        writeln!(output, "{}", MindTextReply::from_reply(reply)?.to_nota()?)?;
+        writeln!(output, "{}", CommandReply::new(reply).to_nota()?)?;
         Ok(())
+    }
+}
+
+struct CommandRequest {
+    request: MindRequest,
+}
+
+impl CommandRequest {
+    fn from_nota(text: &str) -> Result<Self> {
+        if let Ok(text_request) = MindTextRequest::from_nota(text) {
+            return Ok(Self {
+                request: text_request.into_request()?,
+            });
+        }
+
+        let mut decoder = Decoder::new(text);
+        let request = MindRequest::decode(&mut decoder)?;
+        CommandNotaEnd::new(&mut decoder).expect()?;
+        Ok(Self { request })
+    }
+
+    fn into_request(self) -> MindRequest {
+        self.request
+    }
+}
+
+struct CommandReply {
+    reply: MindReply,
+}
+
+impl CommandReply {
+    fn new(reply: MindReply) -> Self {
+        Self { reply }
+    }
+
+    fn to_nota(&self) -> Result<String> {
+        if let Ok(text_reply) = MindTextReply::from_reply(self.reply.clone()) {
+            return text_reply.to_nota();
+        }
+
+        let mut encoder = Encoder::new();
+        self.reply.encode(&mut encoder)?;
+        Ok(encoder.into_string())
+    }
+}
+
+struct CommandNotaEnd<'decoder, 'input> {
+    decoder: &'decoder mut Decoder<'input>,
+}
+
+impl<'decoder, 'input> CommandNotaEnd<'decoder, 'input> {
+    fn new(decoder: &'decoder mut Decoder<'input>) -> Self {
+        Self { decoder }
+    }
+
+    fn expect(&mut self) -> nota_codec::Result<()> {
+        if let Some(token) = self.decoder.peek_token()? {
+            Err(nota_codec::Error::UnexpectedToken {
+                expected: "end of input",
+                got: token,
+            })
+        } else {
+            Ok(())
+        }
     }
 }
 

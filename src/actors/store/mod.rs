@@ -1,5 +1,6 @@
 mod activity;
 mod claims;
+mod graph;
 mod kernel;
 mod memory;
 mod persistence;
@@ -14,6 +15,7 @@ use super::pipeline::PipelineReply;
 use super::trace::{ActorTrace, TraceAction, TraceNode};
 use activity::ActivityStore;
 use claims::ClaimStore;
+use graph::GraphStore;
 use kernel::{LoadMemoryGraph, StoreKernel};
 use memory::MemoryStore;
 use persistence::PersistenceRejection;
@@ -27,6 +29,7 @@ pub(super) struct StoreSupervisor {
     memory: ActorRef<MemoryStore>,
     claims: ActorRef<ClaimStore>,
     activity: ActorRef<ActivityStore>,
+    graph: ActorRef<GraphStore>,
 }
 
 pub struct ApplyMemory {
@@ -64,16 +67,48 @@ pub struct ReadActivity {
     pub trace: ActorTrace,
 }
 
+pub struct SubmitThought {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
+pub struct SubmitRelation {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
+pub struct QueryThoughts {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
+pub struct QueryRelations {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
+pub struct SubscribeThoughts {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
+pub struct SubscribeRelations {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
 impl StoreSupervisor {
     fn new(
         memory: ActorRef<MemoryStore>,
         claims: ActorRef<ClaimStore>,
         activity: ActorRef<ActivityStore>,
+        graph: ActorRef<GraphStore>,
     ) -> Self {
         Self {
             memory,
             claims,
             activity,
+            graph,
         }
     }
 
@@ -160,6 +195,78 @@ impl StoreSupervisor {
             .await
             .map_err(|error| crate::Error::ActorCall(error.to_string()))
     }
+
+    async fn submit_thought(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> crate::Result<PipelineReply> {
+        trace.record(TraceNode::STORE_SUPERVISOR, TraceAction::MessageReceived);
+        self.graph
+            .ask(graph::SubmitThought { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn submit_relation(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> crate::Result<PipelineReply> {
+        trace.record(TraceNode::STORE_SUPERVISOR, TraceAction::MessageReceived);
+        self.graph
+            .ask(graph::SubmitRelation { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn query_thoughts(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> crate::Result<PipelineReply> {
+        trace.record(TraceNode::STORE_SUPERVISOR, TraceAction::MessageReceived);
+        self.graph
+            .ask(graph::QueryThoughts { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn query_relations(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> crate::Result<PipelineReply> {
+        trace.record(TraceNode::STORE_SUPERVISOR, TraceAction::MessageReceived);
+        self.graph
+            .ask(graph::QueryRelations { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn subscribe_thoughts(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> crate::Result<PipelineReply> {
+        trace.record(TraceNode::STORE_SUPERVISOR, TraceAction::MessageReceived);
+        self.graph
+            .ask(graph::OpenThoughtSubscription { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn subscribe_relations(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> crate::Result<PipelineReply> {
+        trace.record(TraceNode::STORE_SUPERVISOR, TraceAction::MessageReceived);
+        self.graph
+            .ask(graph::OpenRelationSubscription { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
 }
 
 impl Actor for StoreSupervisor {
@@ -195,11 +302,24 @@ impl Actor for StoreSupervisor {
         )
         .spawn()
         .await;
-        let activity = ActivityStore::supervise(&actor_reference, activity::Arguments { kernel })
-            .spawn()
-            .await;
+        let activity = ActivityStore::supervise(
+            &actor_reference,
+            activity::Arguments {
+                kernel: kernel.clone(),
+            },
+        )
+        .spawn()
+        .await;
+        let graph = GraphStore::supervise(
+            &actor_reference,
+            graph::Arguments {
+                kernel: kernel.clone(),
+            },
+        )
+        .spawn()
+        .await;
 
-        Ok(Self::new(memory, claims, activity))
+        Ok(Self::new(memory, claims, activity, graph))
     }
 }
 
@@ -296,6 +416,90 @@ impl Message<ReadActivity> for StoreSupervisor {
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         self.read_activity(message.envelope, message.trace)
+            .await
+            .unwrap_or_else(PersistenceRejection::pipeline)
+    }
+}
+
+impl Message<SubmitThought> for StoreSupervisor {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: SubmitThought,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.submit_thought(message.envelope, message.trace)
+            .await
+            .unwrap_or_else(PersistenceRejection::pipeline)
+    }
+}
+
+impl Message<SubmitRelation> for StoreSupervisor {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: SubmitRelation,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.submit_relation(message.envelope, message.trace)
+            .await
+            .unwrap_or_else(PersistenceRejection::pipeline)
+    }
+}
+
+impl Message<QueryThoughts> for StoreSupervisor {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: QueryThoughts,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.query_thoughts(message.envelope, message.trace)
+            .await
+            .unwrap_or_else(PersistenceRejection::pipeline)
+    }
+}
+
+impl Message<QueryRelations> for StoreSupervisor {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: QueryRelations,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.query_relations(message.envelope, message.trace)
+            .await
+            .unwrap_or_else(PersistenceRejection::pipeline)
+    }
+}
+
+impl Message<SubscribeThoughts> for StoreSupervisor {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: SubscribeThoughts,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.subscribe_thoughts(message.envelope, message.trace)
+            .await
+            .unwrap_or_else(PersistenceRejection::pipeline)
+    }
+}
+
+impl Message<SubscribeRelations> for StoreSupervisor {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: SubscribeRelations,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.subscribe_relations(message.envelope, message.trace)
             .await
             .unwrap_or_else(PersistenceRejection::pipeline)
     }

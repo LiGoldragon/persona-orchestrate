@@ -1,7 +1,11 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use nota_codec::{Encoder, NotaEncode};
 use persona_mind::{MindCommand, MindDaemon, MindDaemonEndpoint, StoreLocation};
-use signal_persona_mind::{MindRequest, RoleName};
+use signal_persona_mind::{
+    GoalBody, GoalScope, MindRequest, RoleName, SubmitThought, TextBody, ThoughtBody, ThoughtKind,
+    WorkspaceGoal,
+};
 
 struct CliFixture {
     endpoint: MindDaemonEndpoint,
@@ -506,4 +510,45 @@ async fn mind_cli_reads_role_observation_without_lock_files() {
     let text = String::from_utf8(observation_output).expect("cli output utf8");
 
     assert!(text.contains("(RoleStatus Operator [(ClaimEntry (Path \"/git/github.com/LiGoldragon/persona\") \"claim before observe\")]"));
+}
+
+#[tokio::test]
+async fn mind_cli_accepts_full_signal_mind_request_for_typed_graph() {
+    let fixture = CliFixture::new("typed-graph");
+    let daemon = fixture.bind().await;
+    let endpoint = daemon.endpoint().clone();
+    let server = tokio::spawn(async move { daemon.serve_one().await });
+    let request = MindRequest::SubmitThought(SubmitThought {
+        kind: ThoughtKind::Goal,
+        body: ThoughtBody::Goal(GoalBody {
+            description: TextBody::new("CLI accepts full signal request"),
+            scope: GoalScope::Workspace(WorkspaceGoal {
+                workspace: TextBody::new("primary"),
+            }),
+        }),
+    });
+    let mut encoder = Encoder::new();
+    request.encode(&mut encoder).expect("request encodes");
+
+    let mut output = Vec::new();
+    MindCommand::from_arguments([
+        "--socket",
+        endpoint.as_path().to_str().expect("socket path utf8"),
+        "--actor",
+        "operator",
+        &encoder.into_string(),
+    ])
+    .run(&mut output)
+    .await
+    .expect("cli sends typed graph request");
+
+    server
+        .await
+        .expect("daemon task joins")
+        .expect("daemon serves request");
+    let text = String::from_utf8(output).expect("cli output utf8");
+
+    assert!(text.starts_with("(ThoughtCommitted "));
+    assert!(text.contains("aaa"));
+    assert!(!text.contains("item-"));
 }

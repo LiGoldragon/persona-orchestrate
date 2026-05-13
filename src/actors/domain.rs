@@ -38,6 +38,16 @@ pub struct ApplyActivity {
     pub trace: ActorTrace,
 }
 
+pub struct SubmitThought {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
+pub struct SubmitRelation {
+    pub envelope: MindEnvelope,
+    pub trace: ActorTrace,
+}
+
 impl DomainPhase {
     fn new(store: ActorRef<store::StoreSupervisor>) -> Self {
         Self { store }
@@ -101,6 +111,42 @@ impl DomainPhase {
 
         self.store
             .ask(store::ApplyActivity { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn submit_thought(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        trace.record(TraceNode::DOMAIN_PHASE, TraceAction::MessageReceived);
+        trace.record(
+            TraceNode::MIND_GRAPH_SUPERVISOR,
+            TraceAction::MessageReceived,
+        );
+        trace.record(TraceNode::THOUGHT_COMMIT, TraceAction::MessageReceived);
+
+        self.store
+            .ask(store::SubmitThought { envelope, trace })
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
+
+    async fn submit_relation(
+        &self,
+        envelope: MindEnvelope,
+        mut trace: ActorTrace,
+    ) -> CrateResult<PipelineReply> {
+        trace.record(TraceNode::DOMAIN_PHASE, TraceAction::MessageReceived);
+        trace.record(
+            TraceNode::MIND_GRAPH_SUPERVISOR,
+            TraceAction::MessageReceived,
+        );
+        trace.record(TraceNode::RELATION_COMMIT, TraceAction::MessageReceived);
+
+        self.store
+            .ask(store::SubmitRelation { envelope, trace })
             .await
             .map_err(|error| crate::Error::ActorCall(error.to_string()))
     }
@@ -172,6 +218,36 @@ impl Message<ApplyActivity> for DomainPhase {
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         match self.apply_activity(message.envelope, message.trace).await {
+            Ok(reply) => reply,
+            Err(_error) => PipelineReply::new(None, ActorTrace::new()),
+        }
+    }
+}
+
+impl Message<SubmitThought> for DomainPhase {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: SubmitThought,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        match self.submit_thought(message.envelope, message.trace).await {
+            Ok(reply) => reply,
+            Err(_error) => PipelineReply::new(None, ActorTrace::new()),
+        }
+    }
+}
+
+impl Message<SubmitRelation> for DomainPhase {
+    type Reply = PipelineReply;
+
+    async fn handle(
+        &mut self,
+        message: SubmitRelation,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        match self.submit_relation(message.envelope, message.trace).await {
             Ok(reply) => reply,
             Err(_error) => PipelineReply::new(None, ActorTrace::new()),
         }

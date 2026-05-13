@@ -4,6 +4,7 @@ pub mod claim;
 pub mod command;
 pub mod envelope;
 pub mod error;
+pub mod graph;
 pub mod memory;
 pub mod role;
 pub mod tables;

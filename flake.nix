@@ -75,11 +75,32 @@
               cargoTestExtraArgs = "--test daemon_wire";
             }
           );
+          mind-typed-graph-uses-graph-actor-lane = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test actor_topology typed_thought_runs_through_graph_actor_lane_and_store_mints_id";
+            }
+          );
+          mind-typed-thought-graph-survives-process-restart = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test daemon_wire mind_typed_thought_graph_survives_process_restart";
+            }
+          );
           cli = craneLib.cargoTest (
             commonArgs
             // {
               inherit cargoArtifacts;
               cargoTestExtraArgs = "--test cli";
+            }
+          );
+          mind-cli-accepts-full-signal-mind-request-for-typed-graph = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test cli mind_cli_accepts_full_signal_mind_request_for_typed_graph";
             }
           );
           cli-binary = pkgs.runCommand "mind-cli-binary" { } ''

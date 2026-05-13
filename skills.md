@@ -2,7 +2,7 @@
 
 Work here when the change concerns Persona's central typed state: roles,
 claims, handoff tasks, activity, memory/work items, notes, dependencies,
-aliases, ready-work views, or the `mind` CLI.
+aliases, ready-work views, typed Thought/Relation records, or the `mind` CLI.
 
 Rules for work here:
 
@@ -15,6 +15,12 @@ Rules for work here:
   database; no shared cross-component DB.
 - Memory/work mutations append typed events; item state and ready-work lists are
   projections.
+- Typed mind graph mutations append immutable `Thought` / `Relation` records;
+  corrections are new records plus relations, not in-place edits.
+- Thought and relation IDs are typed contract values minted by mind. Do not
+  encode type prefixes into ID strings.
+- The convenience CLI projection may be smaller than the full contract, but the
+  CLI must still accept a full `signal-persona-mind::MindRequest` NOTA record.
 - Lock files are outside the implementation target. They are temporary
   workspace coordination artifacts and should not be regenerated or projected
   by `persona-mind`.

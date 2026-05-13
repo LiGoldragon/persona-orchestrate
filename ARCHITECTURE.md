@@ -175,6 +175,7 @@ lands.
 | `CallerIdentityResolver` | owns caller resolution and authority failure. |
 | `ClaimFlow` / `ClaimConflictDetector` | owns conflict semantics. |
 | `ActivityFlow` / `ActivityAppender` | owns store-stamped activity append. |
+| `GraphFlow` / `GraphStore` | owns typed Thought/Relation append and query. |
 | `SemaWriter` | owns write ordering and transaction failure. |
 | `SemaReader` | owns read snapshots. |
 | `IdMint` | owns stable/display ID collision state. |
@@ -185,24 +186,28 @@ lands.
 
 Current implementation:
 
-- `StoreSupervisor` supervises `StoreKernel`, `MemoryStore`, `ClaimStore`, and
-  `ActivityStore`.
+- `StoreSupervisor` supervises `StoreKernel`, `MemoryStore`, `ClaimStore`,
+  `ActivityStore`, and `GraphStore`.
 - `StoreKernel` is the only actor that opens and owns the `MindTables` handle
   over `mind.redb`.
-- `MindTables` schema v3 owns claims, activities, an activity slot cursor, and
-  the typed `memory_graph` snapshot table.
+- `MindTables` schema v4 owns claims, activities, slot cursors, the typed
+  `memory_graph` snapshot table, and first-cut typed mind graph tables.
 - `ClaimStore` routes claim/release/handoff/observation work to `StoreKernel`,
   where `ClaimLedger` performs the Sema reads and writes.
 - `ActivityStore` routes activity append/query work to `StoreKernel`, where
   `ActivityLedger` performs the Sema reads and writes.
 - `MemoryStore` owns the private `MemoryState` reducer and commits accepted
   work/memory snapshots through `StoreKernel`.
+- `GraphStore` routes `SubmitThought`, `SubmitRelation`, `QueryThoughts`, and
+  `QueryRelations` to `StoreKernel`, where `MindGraphLedger` reads and writes
+  typed `Thought` and `Relation` records.
 - Work/memory mutations append typed `Event` values in the reducer, then
   replace the typed Sema graph snapshot before success replies are emitted.
 - Queries read the loaded work graph through `MemoryStore` and produce typed
   `View` replies.
-- Role claim, release, handoff, observation, activity submission, and activity
-  query are routed through the actor path.
+- Role claim, release, handoff, observation, activity submission, activity
+  query, and first typed mind-graph create/query operations are routed through
+  the actor path.
 
 Destination:
 
@@ -234,6 +239,10 @@ Recommended tables:
 | `activities` | Store-stamped role activity. |
 | `activity_next_slot` | Next activity slot cursor; avoids scanning activities on every append. |
 | `memory_graph` | Current typed graph snapshot for the first durable implementation wave. |
+| `thoughts` | Append-only typed `Thought` records; IDs are compact typed values minted by mind. |
+| `relations` | Append-only typed `Relation` records between thoughts. |
+| `thought_next_slot` | Next thought-ID cursor. |
+| `relation_next_slot` | Next relation-ID cursor. |
 | `items` | Work/memory/decision/question records. |
 | `notes` | Notes attached to items. |
 | `edges` | Dependencies and references. |
@@ -377,6 +386,12 @@ This repo does not own:
   table in `mind.redb`.
 - Work/memory writes replace the typed `memory_graph` snapshot in `mind.redb`
   before producing success replies.
+- Typed graph thought/relation writes append to `thoughts` / `relations` in
+  `mind.redb` before producing success replies.
+- `SubmitThought.kind` must match `SubmitThought.body.kind()`; contradictory
+  records are rejected before persistence.
+- `SubmitRelation` must reference existing thought IDs; missing endpoints are
+  rejected before persistence.
 - `MindRequest` and `MindReply` come from `signal-persona-mind`; the CLI does
   not define a parallel command vocabulary.
 - All public state operations enter the actor system as one `MindEnvelope`.
@@ -387,6 +402,9 @@ This repo does not own:
   shared locks between actors.
 - Queries never send write intents.
 - Writes append typed events before producing success replies.
+- Typed graph queries use the read path and never write.
+- Typed graph subscription records decode and return a typed unimplemented
+  reply until the push subscription actor is implemented.
 - Role claim, release, handoff, and observation are successful runtime paths,
   not unsupported placeholders.
 - BEADS import creates aliases or external references only; there is no live
@@ -410,6 +428,8 @@ This repo does not own:
   `RefCell`.
 - Queries never send write intents.
 - Writes append typed events.
+- Typed `Thought` and `Relation` records are immutable; correction is modeled
+  as a new record plus a relation such as `Supersedes`.
 - Durable truth lives in `mind.redb`; lock files are outside this
   implementation and BEADS is import/history only.
 
@@ -448,6 +468,12 @@ constraints:
 | `client_cannot_reply_without_daemon_signal_frame` | clients cannot fabricate successful daemon replies. |
 | `mind_store_survives_process_restart` | role claims committed by one daemon process are visible after a daemon restart on the same `mind.redb`. |
 | `mind_memory_graph_survives_process_restart` | work items opened by one daemon process are visible after a daemon restart on the same `mind.redb`. |
+| `typed_thought_runs_through_graph_actor_lane_and_store_mints_id` | typed graph writes pass through graph actors and mind mints compact IDs. |
+| `typed_thought_query_uses_reader_without_writer` | typed graph queries are read-only. |
+| `typed_relation_rejects_missing_thought_endpoint` | relation endpoints are real thought IDs, not unchecked strings. |
+| `mind_typed_thought_graph_survives_process_restart` | typed thoughts are durable across daemon restart. |
+| `mind_typed_relation_round_trip_uses_committed_thought_ids` | relations use committed thought IDs and survive the daemon path. |
+| `mind_cli_accepts_full_signal_mind_request_for_typed_graph` | CLI can submit a full `signal-persona-mind` request when the convenience text projection has no shorthand. |
 | `mind_runs_without_lock_file_projection` | lock files are outside the implementation. |
 | `beads_import_creates_alias_only` | no live BEADS bridge. |
 
@@ -462,8 +488,9 @@ src/actors/mod.rs          actor module exports
 src/actors/root.rs         MindRoot
 src/actors/ingress.rs      ingress supervisor and envelope preparation trace
 src/actors/dispatch.rs     request classification and flow selection
-src/actors/domain.rs       memory mutation domain path
+src/actors/domain.rs       mutation domain path
 src/actors/store.rs        store supervisor, store kernel, and narrow store actors
+src/actors/store/graph.rs  typed Thought/Relation graph actor lane
 src/actors/view.rs         query/read-view path
 src/actors/reply.rs        typed reply shaping path
 src/actors/config.rs       store-path configuration actor
@@ -472,9 +499,10 @@ src/actors/manifest.rs     actor topology manifest
 src/actors/trace.rs        actor trace witness types
 src/activity.rs            activity append/query ledger over mind-local Sema
 src/claim.rs               claim-scope reducer
+src/graph.rs               typed Thought/Relation ledger and filters
 src/memory.rs              memory/work graph reducer
 src/role.rs                local role value
-src/tables.rs              mind-local Sema schema and role/activity tables
+src/tables.rs              mind-local Sema schema and tables
 src/text.rs                NOTA role-state projection for mind CLI
 src/transport.rs           Unix-socket Signal-frame client/daemon transport
 src/main.rs                command-line entry point
