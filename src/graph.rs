@@ -137,18 +137,18 @@ impl<'tables> MindGraphLedger<'tables> {
         &self,
         subscription: signal_persona_mind::SubscribeThoughts,
     ) -> Result<MindReply> {
-        let record = self.tables.append_thought_subscription(subscription)?;
+        let opened = self.tables.append_thought_subscription(subscription)?;
         let relations = self.tables.relation_records()?;
-        let selector = ThoughtSelector::new(record.filter, relations);
-        let initial_snapshot = self
-            .tables
-            .thought_records()?
-            .into_iter()
+        let selector = ThoughtSelector::new(opened.record().filter.clone(), relations);
+        let initial_snapshot = opened
+            .initial()
+            .iter()
             .filter(|thought| selector.accepts(thought))
+            .cloned()
             .map(signal_persona_mind::MindSnapshot::Thought)
             .collect();
         Ok(MindReply::SubscriptionAccepted(SubscriptionAccepted {
-            subscription: record.subscription,
+            subscription: opened.record().subscription.clone(),
             initial_snapshot,
         }))
     }
@@ -157,17 +157,17 @@ impl<'tables> MindGraphLedger<'tables> {
         &self,
         subscription: signal_persona_mind::SubscribeRelations,
     ) -> Result<MindReply> {
-        let record = self.tables.append_relation_subscription(subscription)?;
-        let selector = RelationSelector::new(record.filter);
-        let initial_snapshot = self
-            .tables
-            .relation_records()?
-            .into_iter()
+        let opened = self.tables.append_relation_subscription(subscription)?;
+        let selector = RelationSelector::new(opened.record().filter.clone());
+        let initial_snapshot = opened
+            .initial()
+            .iter()
             .filter(|relation| selector.accepts(relation))
+            .cloned()
             .map(signal_persona_mind::MindSnapshot::Relation)
             .collect();
         Ok(MindReply::SubscriptionAccepted(SubscriptionAccepted {
-            subscription: record.subscription,
+            subscription: opened.record().subscription.clone(),
             initial_snapshot,
         }))
     }

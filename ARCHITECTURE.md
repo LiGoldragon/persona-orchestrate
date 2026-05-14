@@ -6,9 +6,11 @@ command-line mind.*
 > Status: the crate has a real Kameo runtime, mind-local Sema tables for
 > durable role claims, activity records, and a typed work-graph snapshot.
 > Typed Thought/Relation graph records use `sema-engine` for Assert/Match and
-> operation-log snapshots, while subscription registrations and older tables
-> still use the same underlying `sema` kernel handle. The crate also has a
-> Unix-socket Signal-frame daemon/client transport around `MindRoot`. The
+> operation-log snapshots. Typed graph subscriptions register through
+> `sema-engine` Subscribe and keep only Persona-specific filter rows locally;
+> post-commit push delivery is still incomplete. Older tables still use the
+> same underlying `sema` kernel handle. The crate also has a Unix-socket
+> Signal-frame daemon/client transport around `MindRoot`. The
 > `mind` binary can run a daemon and submit NOTA role
 > claim/release/handoff/observation, activity submission/query, and work-graph
 > opening/note/link/status/alias/query requests through that daemon.
@@ -192,7 +194,7 @@ Current implementation:
   `ActivityStore`, and `GraphStore`.
 - `StoreKernel` is the only actor that opens and owns the `MindTables` handle
   over `mind.redb`.
-- `MindTables` schema v6 owns claims, activities, slot cursors, the typed
+- `MindTables` schema v7 owns claims, activities, slot cursors, the typed
   `memory_graph` snapshot table, typed graph subscription registration tables,
   and the `sema-engine` table registrations for typed Thought/Relation graph
   records.
@@ -206,8 +208,9 @@ Current implementation:
   `QueryRelations`, `SubscribeThoughts`, and `SubscribeRelations` to
   `StoreKernel`, where `MindGraphLedger` writes typed `Thought`/`Relation`
   records through `sema-engine`, reads them through `sema-engine` Match
-  queries, and stores subscription registration records through the same
-  `sema` kernel handle.
+  queries, registers subscriptions through `sema-engine` Subscribe, and stores
+  only Persona-specific subscription filters through the same `sema` kernel
+  handle.
 - Work/memory mutations append typed `Event` values in the reducer, then
   replace the typed Sema graph snapshot before success replies are emitted.
 - Queries read the loaded work graph through `MemoryStore` and produce typed
@@ -251,9 +254,8 @@ Recommended tables:
 | `memory_graph` | Current typed graph snapshot for the first durable implementation wave. |
 | `thoughts` | `sema-engine` registered family for append-only typed `Thought` records; IDs are compact values minted from the engine snapshot sequence. |
 | `relations` | `sema-engine` registered family for append-only typed `Relation` records between thoughts. |
-| `thought_subscriptions` | Durable `SubscribeThoughts` filters plus mind-minted subscription IDs. |
-| `relation_subscriptions` | Durable `SubscribeRelations` filters plus mind-minted subscription IDs. |
-| `subscription_next_slot` | Next subscription-ID cursor shared by thought and relation subscriptions. |
+| `thought_subscriptions` | Durable Persona-specific `SubscribeThoughts` filters keyed by IDs minted from `sema-engine` subscription handles. |
+| `relation_subscriptions` | Durable Persona-specific `SubscribeRelations` filters keyed by IDs minted from `sema-engine` subscription handles. |
 | `items` | Work/memory/decision/question records. |
 | `notes` | Notes attached to items. |
 | `edges` | Dependencies and references. |
@@ -417,11 +419,14 @@ This repo does not own:
 - Current thought queries exclude Thoughts that are the target of a
   `Supersedes` relation. The old Thought remains in `mind.redb`; correction is
   a view rule, not in-place mutation.
-- Typed graph subscriptions append filter records to `thought_subscriptions`
-  or `relation_subscriptions` and return an initial snapshot that is computed
-  from durable graph tables.
-- Typed graph subscription registration is implemented; post-commit delta
-  push delivery is not implemented yet.
+- Typed graph subscriptions register the table-family subscription through
+  `sema-engine` Subscribe before recording Persona-specific filters in
+  `thought_subscriptions` or `relation_subscriptions`.
+- Typed graph subscription replies use the initial snapshot returned by
+  `sema-engine` Subscribe, then apply the Persona-specific filter before
+  replying.
+- Typed graph subscription registration and initial snapshots are implemented;
+  post-commit delta push delivery is not implemented yet.
 - `MindRequest` and `MindReply` come from `signal-persona-mind`; the CLI does
   not define a parallel command vocabulary.
 - All public state operations enter the actor system as one `MindEnvelope`.
@@ -433,9 +438,9 @@ This repo does not own:
 - Queries never send write intents.
 - Writes append typed events before producing success replies.
 - Typed graph queries use the read path and never write.
-- Typed graph subscription records register durable filters and return an
-  initial snapshot; later post-commit deltas require the push subscription
-  actor.
+- Typed graph subscription records are backed by `sema-engine` subscription
+  registrations and return an initial snapshot; later post-commit deltas
+  require the push subscription actor/outbox surface.
 - Role claim, release, handoff, and observation are successful runtime paths,
   not unsupported placeholders.
 - BEADS import creates aliases or external references only; there is no live
@@ -504,15 +509,17 @@ constraints:
 | `typed_thought_append_uses_sema_engine_operation_log` | typed graph Thought append writes through `sema-engine` and records an Assert operation-log entry. |
 | `typed_thought_query_uses_reader_without_writer` | typed graph queries are read-only. |
 | `typed_graph_records_cannot_bypass_sema_engine` | typed graph records cannot be inserted through direct `sema` tables. |
+| `graph_subscriptions_cannot_bypass_sema_engine_subscribe` | graph subscriptions cannot mint local cursor IDs or skip `sema-engine` Subscribe. |
 | `mind_lockfile_cannot_resolve_two_sema_kernels` | Cargo cannot resolve duplicate `sema` / `signal-core` sources while `persona-mind` consumes `sema-engine`. |
 | `typed_relation_rejects_missing_thought_endpoint` | relation endpoints are real thought IDs, not unchecked strings. |
 | `relation_kind_rejects_wrong_domain` | relation domain/range rules come from `signal-persona-mind` and reject invalid endpoints before persistence. |
 | `authored_relation_rejects_non_identity_reference_source` | `Authored` uses the contract endpoint validator and rejects non-identity Reference sources before persistence. |
 | `superseded_thought_excluded_from_current_query` | correction is a `Supersedes` relation and current queries hide the old target. |
 | `supersedes_relation_rejects_different_thought_kinds` | cross-kind supersession is rejected before persistence. |
-| `typed_thought_subscription_registers_and_returns_initial_snapshot` | thought subscriptions persist a filter and return matching durable thoughts. |
-| `typed_relation_subscription_registers_and_returns_initial_snapshot` | relation subscriptions persist a filter and return matching durable relations. |
+| `typed_thought_subscription_registers_and_returns_initial_snapshot` | thought subscriptions register through `sema-engine`, persist a filter, and return matching durable thoughts. |
+| `typed_relation_subscription_registers_and_returns_initial_snapshot` | relation subscriptions register through `sema-engine`, persist a filter, and return matching durable relations. |
 | `thought_subscription_is_durable_table_data` | subscription rows survive closing and reopening the Sema database handle. |
+| `typed_subscription_registration_uses_sema_engine_catalog` | graph subscription IDs and registrations come from `sema-engine`, not local slot cursors. |
 | `mind_typed_thought_graph_survives_process_restart` | typed thoughts are durable across daemon restart. |
 | `mind_typed_relation_round_trip_uses_committed_thought_ids` | relations use committed thought IDs and survive the daemon path. |
 | `mind_cli_accepts_full_signal_mind_request_for_typed_graph` | CLI can submit a full `signal-persona-mind` request when the convenience text projection has no shorthand. |

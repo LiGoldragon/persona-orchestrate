@@ -1,9 +1,10 @@
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use sema::{SchemaVersion, Table};
 use sema_engine::{
-    Assertion, Engine, EngineOpen, EngineRecord, QueryPlan, RecordKey, TableDescriptor, TableName,
-    TableReference,
+    Assertion, Engine, EngineOpen, EngineRecord, QueryPlan, RecordKey, SinkError,
+    SubscriptionEvent, SubscriptionSink, TableDescriptor, TableName, TableReference,
 };
 use signal_persona_mind::{
     Activity, ActorName, RecordId, Relation, RelationId, RoleName, ScopeReason, ScopeReference,
@@ -13,7 +14,7 @@ use signal_persona_mind::{
 
 use crate::{MemoryGraph, Result, StoreLocation};
 
-const MIND_SCHEMA_VERSION: SchemaVersion = SchemaVersion::new(6);
+const MIND_SCHEMA_VERSION: SchemaVersion = SchemaVersion::new(7);
 
 const CLAIMS: Table<&'static str, StoredClaim> = Table::new("claims");
 const ACTIVITIES: Table<u64, StoredActivity> = Table::new("activities");
@@ -23,10 +24,8 @@ const THOUGHT_SUBSCRIPTIONS: Table<&'static str, StoredThoughtSubscription> =
     Table::new("thought_subscriptions");
 const RELATION_SUBSCRIPTIONS: Table<&'static str, StoredRelationSubscription> =
     Table::new("relation_subscriptions");
-const SUBSCRIPTION_NEXT_SLOT: Table<&'static str, u64> = Table::new("subscription_next_slot");
 const ACTIVITY_NEXT_SLOT_KEY: &str = "next";
 const MEMORY_GRAPH_KEY: &str = "current";
-const SUBSCRIPTION_NEXT_SLOT_KEY: &str = "next";
 const THOUGHTS: TableName = TableName::new("thoughts");
 const RELATIONS: TableName = TableName::new("relations");
 
@@ -74,6 +73,16 @@ pub(crate) struct StoredRelation {
     record: Relation,
 }
 
+pub(crate) struct OpenedThoughtSubscription {
+    record: StoredThoughtSubscription,
+    initial: Vec<Thought>,
+}
+
+pub(crate) struct OpenedRelationSubscription {
+    record: StoredRelationSubscription,
+    initial: Vec<Relation>,
+}
+
 impl StoredThought {
     fn new(record: Thought) -> Self {
         Self { record }
@@ -91,6 +100,34 @@ impl StoredRelation {
 
     fn into_record(self) -> Relation {
         self.record
+    }
+}
+
+impl OpenedThoughtSubscription {
+    fn new(record: StoredThoughtSubscription, initial: Vec<Thought>) -> Self {
+        Self { record, initial }
+    }
+
+    pub(crate) fn record(&self) -> &StoredThoughtSubscription {
+        &self.record
+    }
+
+    pub(crate) fn initial(&self) -> &[Thought] {
+        &self.initial
+    }
+}
+
+impl OpenedRelationSubscription {
+    fn new(record: StoredRelationSubscription, initial: Vec<Relation>) -> Self {
+        Self { record, initial }
+    }
+
+    pub(crate) fn record(&self) -> &StoredRelationSubscription {
+        &self.record
+    }
+
+    pub(crate) fn initial(&self) -> &[Relation] {
+        &self.initial
     }
 }
 
@@ -157,7 +194,6 @@ impl MindTables {
             MEMORY_GRAPH.ensure(transaction)?;
             THOUGHT_SUBSCRIPTIONS.ensure(transaction)?;
             RELATION_SUBSCRIPTIONS.ensure(transaction)?;
-            SUBSCRIPTION_NEXT_SLOT.ensure(transaction)?;
             Ok(())
         })?;
         let thoughts = engine.register_table(TableDescriptor::new(THOUGHTS))?;
@@ -323,43 +359,55 @@ impl MindTables {
     pub(crate) fn append_thought_subscription(
         &self,
         subscription: SubscribeThoughts,
-    ) -> Result<StoredThoughtSubscription> {
-        let slot = self.next_subscription_slot()?;
+    ) -> Result<OpenedThoughtSubscription> {
+        let receipt = self.engine.subscribe(
+            QueryPlan::all(self.thoughts),
+            GraphSubscriptionSink::new(THOUGHTS),
+        )?;
+        let initial = receipt
+            .initial()
+            .snapshot()
+            .records()
+            .iter()
+            .cloned()
+            .map(StoredThought::into_record)
+            .collect();
         let record = StoredThoughtSubscription {
-            subscription: SubscriptionId::new(CompactGraphId::new(slot.value()).into_string()),
+            subscription: Self::subscription_id_from_engine(receipt.handle().id()),
             filter: subscription.filter,
         };
         self.engine.storage_kernel().write(|transaction| {
             THOUGHT_SUBSCRIPTIONS.insert(transaction, record.subscription.as_str(), &record)?;
-            SUBSCRIPTION_NEXT_SLOT.insert(
-                transaction,
-                SUBSCRIPTION_NEXT_SLOT_KEY,
-                &slot.next_value(),
-            )?;
             Ok(())
         })?;
-        Ok(record)
+        Ok(OpenedThoughtSubscription::new(record, initial))
     }
 
     pub(crate) fn append_relation_subscription(
         &self,
         subscription: SubscribeRelations,
-    ) -> Result<StoredRelationSubscription> {
-        let slot = self.next_subscription_slot()?;
+    ) -> Result<OpenedRelationSubscription> {
+        let receipt = self.engine.subscribe(
+            QueryPlan::all(self.relations),
+            GraphSubscriptionSink::new(RELATIONS),
+        )?;
+        let initial = receipt
+            .initial()
+            .snapshot()
+            .records()
+            .iter()
+            .cloned()
+            .map(StoredRelation::into_record)
+            .collect();
         let record = StoredRelationSubscription {
-            subscription: SubscriptionId::new(CompactGraphId::new(slot.value()).into_string()),
+            subscription: Self::subscription_id_from_engine(receipt.handle().id()),
             filter: subscription.filter,
         };
         self.engine.storage_kernel().write(|transaction| {
             RELATION_SUBSCRIPTIONS.insert(transaction, record.subscription.as_str(), &record)?;
-            SUBSCRIPTION_NEXT_SLOT.insert(
-                transaction,
-                SUBSCRIPTION_NEXT_SLOT_KEY,
-                &slot.next_value(),
-            )?;
             Ok(())
         })?;
-        Ok(record)
+        Ok(OpenedRelationSubscription::new(record, initial))
     }
 
     fn next_activity_slot(&self) -> Result<ActivitySlot> {
@@ -371,32 +419,6 @@ impl MindTables {
             Some(next_slot) => Ok(ActivitySlot::new(next_slot)),
             None => Ok(ActivitySlot::after_records(&self.activity_records()?)),
         }
-    }
-
-    fn next_subscription_slot(&self) -> Result<GraphSlot> {
-        let stored = self.engine.storage_kernel().read(|transaction| {
-            SUBSCRIPTION_NEXT_SLOT.get(transaction, SUBSCRIPTION_NEXT_SLOT_KEY)
-        })?;
-        match stored {
-            Some(next_slot) => Ok(GraphSlot::new(next_slot)),
-            None => Ok(GraphSlot::after_records(
-                self.thought_subscription_count()? + self.relation_subscription_count()?,
-            )),
-        }
-    }
-
-    fn thought_subscription_count(&self) -> Result<usize> {
-        Ok(self
-            .engine
-            .storage_kernel()
-            .read(|transaction| Ok(THOUGHT_SUBSCRIPTIONS.iter(transaction)?.len()))?)
-    }
-
-    fn relation_subscription_count(&self) -> Result<usize> {
-        Ok(self
-            .engine
-            .storage_kernel()
-            .read(|transaction| Ok(RELATION_SUBSCRIPTIONS.iter(transaction)?.len()))?)
     }
 
     fn read_thought(&self, record: &RecordId) -> Result<Thought> {
@@ -413,18 +435,22 @@ impl MindTables {
                 record: record.as_str().to_string(),
             })
     }
+
+    fn subscription_id_from_engine(engine_id: sema_engine::SubscriptionId) -> SubscriptionId {
+        SubscriptionId::new(CompactGraphId::new(engine_id.value().saturating_sub(1)).into_string())
+    }
 }
 
 struct ActivitySlot {
     value: u64,
 }
 
-struct GraphSlot {
-    value: u64,
-}
-
 struct GraphIdMint<'engine> {
     engine: &'engine Engine,
+}
+
+struct GraphSubscriptionSink {
+    table: TableName,
 }
 
 impl<'engine> GraphIdMint<'engine> {
@@ -438,28 +464,37 @@ impl<'engine> GraphIdMint<'engine> {
     }
 }
 
-impl GraphSlot {
-    fn new(value: u64) -> Self {
-        Self { value }
+struct CompactGraphId {
+    value: u64,
+}
+
+impl GraphSubscriptionSink {
+    fn new(table: TableName) -> Arc<Self> {
+        Arc::new(Self { table })
     }
 
-    fn after_records(count: usize) -> Self {
-        Self {
-            value: count as u64,
+    fn ensure_table(&self, table: &TableName) -> std::result::Result<(), SinkError> {
+        if self.table == *table {
+            return Ok(());
         }
-    }
 
-    fn value(&self) -> u64 {
-        self.value
-    }
-
-    fn next_value(&self) -> u64 {
-        self.value + 1
+        Err(SinkError::new(format!(
+            "subscription sink for {} received {}",
+            self.table.as_str(),
+            table.as_str()
+        )))
     }
 }
 
-struct CompactGraphId {
-    value: u64,
+impl<RecordValue> SubscriptionSink<RecordValue> for GraphSubscriptionSink {
+    fn deliver(&self, event: SubscriptionEvent<RecordValue>) -> std::result::Result<(), SinkError> {
+        match event {
+            SubscriptionEvent::InitialSnapshot(snapshot) => {
+                self.ensure_table(snapshot.handle().table())
+            }
+            SubscriptionEvent::Delta(delta) => self.ensure_table(delta.table()),
+        }
+    }
 }
 
 impl CompactGraphId {
@@ -576,13 +611,14 @@ mod tests {
     fn thought_subscription_is_durable_table_data() {
         let store = StoreLocation::new(unique_store_path("thought-subscription-durable"));
         let tables = MindTables::open(&store).expect("tables open");
-        let stored = tables
+        let opened = tables
             .append_thought_subscription(SubscribeThoughts {
                 filter: ThoughtFilter::ByKind(ByThoughtKind {
                     kinds: vec![ThoughtKind::Goal],
                 }),
             })
             .expect("subscription appends");
+        let stored = opened.record().clone();
         drop(tables);
 
         let reopened = MindTables::open(&store).expect("tables reopen");
@@ -597,6 +633,29 @@ mod tests {
 
         assert_eq!(persisted, stored);
         assert_eq!(persisted.subscription.as_str().len(), 3);
+    }
+
+    #[test]
+    fn typed_subscription_registration_uses_sema_engine_catalog() {
+        let store = StoreLocation::new(unique_store_path("subscription-engine-catalog"));
+        let tables = MindTables::open(&store).expect("tables open");
+        let opened = tables
+            .append_thought_subscription(SubscribeThoughts {
+                filter: ThoughtFilter::ByKind(ByThoughtKind {
+                    kinds: vec![ThoughtKind::Goal],
+                }),
+            })
+            .expect("subscription appends");
+
+        let registrations = tables
+            .engine
+            .subscription_registrations()
+            .expect("subscription registrations read");
+
+        assert_eq!(opened.record().subscription.as_str(), "aaa");
+        assert_eq!(registrations.len(), 1);
+        assert_eq!(registrations[0].table_name(), "thoughts");
+        assert_eq!(registrations[0].id().value(), 1);
     }
 
     #[test]

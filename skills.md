@@ -13,9 +13,10 @@ Rules for work here:
 - This component owns **its own** mind Sema layer over the `sema` kernel and
   writes one `mind.redb`. The mind state actor sequences writes through that
   database; no shared cross-component DB.
-- Typed Thought/Relation graph records use `sema-engine` for Assert/Match and
-  operation-log snapshots. Unmigrated tables use `Engine::storage_kernel()`;
-  do not open a second `sema::Sema` handle to the same `mind.redb`.
+- Typed Thought/Relation graph records use `sema-engine` for Assert/Match,
+  operation-log snapshots, and subscription registration. Unmigrated tables use
+  `Engine::storage_kernel()`; do not open a second `sema::Sema` handle to the
+  same `mind.redb`.
 - Memory/work mutations append typed events; item state and ready-work lists are
   projections.
 - Typed mind graph mutations append immutable `Thought` / `Relation` records;

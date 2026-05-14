@@ -694,6 +694,53 @@ fn typed_graph_records_cannot_bypass_sema_engine() {
 }
 
 #[test]
+fn graph_subscriptions_cannot_bypass_sema_engine_subscribe() {
+    let tables = SourceTree::new().file("src/tables.rs");
+    let forbidden_fragments = [
+        ForbiddenFragment {
+            text: "SUBSCRIPTION_NEXT_SLOT",
+            reason: "graph subscription identity must come from sema-engine",
+        },
+        ForbiddenFragment {
+            text: "next_subscription_slot",
+            reason: "graph subscription identity must come from sema-engine",
+        },
+        ForbiddenFragment {
+            text: "GraphSlot",
+            reason: "graph subscription identity must come from sema-engine",
+        },
+        ForbiddenFragment {
+            text: "thought_subscription_count",
+            reason: "subscription registration must not scan local tables to mint ids",
+        },
+        ForbiddenFragment {
+            text: "relation_subscription_count",
+            reason: "subscription registration must not scan local tables to mint ids",
+        },
+    ];
+
+    let violations = forbidden_fragments
+        .iter()
+        .flat_map(|fragment| tables.violations_for(fragment))
+        .collect::<Vec<_>>();
+
+    assert!(
+        violations.is_empty(),
+        "graph subscription sema-engine bypass violations:\n{}",
+        violations
+            .iter()
+            .map(SourceViolation::summary)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    assert_eq!(
+        tables.text.matches(".engine.subscribe(").count(),
+        2,
+        "thought and relation subscriptions must both register through sema-engine"
+    );
+}
+
+#[test]
 fn mind_lockfile_cannot_resolve_two_sema_kernels() {
     let lock = SourceTree::new().file("Cargo.lock");
 
