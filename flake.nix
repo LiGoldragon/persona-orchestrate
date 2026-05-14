@@ -82,6 +82,13 @@
               cargoTestExtraArgs = "--test daemon_wire";
             }
           );
+          mind-daemon-applies-spawn-envelope-socket-mode = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test daemon_wire constraint_mind_daemon_applies_spawn_envelope_socket_mode -- --exact";
+            }
+          );
           mind-typed-graph-uses-graph-actor-lane = craneLib.cargoTest (
             commonArgs
             // {

@@ -25,4 +25,4 @@ pub use memory::{MemoryState, StoreLocation};
 pub use role::PersonaRole;
 pub use tables::{MindTables, StoredActivity, StoredClaim};
 pub use text::{MindTextReply, MindTextRequest};
-pub use transport::{MindClient, MindDaemon, MindDaemonEndpoint, MindFrameCodec};
+pub use transport::{MindClient, MindDaemon, MindDaemonEndpoint, MindFrameCodec, MindSocketMode};

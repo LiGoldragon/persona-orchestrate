@@ -1,6 +1,10 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use persona_mind::{MindClient, MindDaemon, MindDaemonEndpoint, MindFrameCodec, StoreLocation};
+use std::os::unix::fs::PermissionsExt;
+
+use persona_mind::{
+    MindClient, MindDaemon, MindDaemonEndpoint, MindFrameCodec, MindSocketMode, StoreLocation,
+};
 use signal_persona_mind::{
     ActiveClaim, ActorName, Alternative, AlternativeId, ByRelationKind, ByThoughtKind,
     ClaimActivity, ClaimBody, ClaimScope, DecisionBody, Frame, FrameBody, GoalBody, GoalScope,
@@ -78,6 +82,34 @@ async fn daemon_round_trip_uses_signal_frames_over_socket() {
         panic!("expected opening receipt");
     };
     assert_eq!(receipt.event.header.actor, ActorName::new("operator"));
+}
+
+#[tokio::test]
+async fn constraint_mind_daemon_applies_spawn_envelope_socket_mode() {
+    let fixture = SocketFixture::new("socket-mode");
+    let daemon = MindDaemon::new(fixture.endpoint(), fixture.store())
+        .with_socket_mode(MindSocketMode::new(0o600))
+        .bind()
+        .await
+        .expect("daemon binds with mode");
+    let endpoint = daemon.endpoint().clone();
+    let mode = std::fs::metadata(endpoint.as_path())
+        .expect("socket metadata is readable")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o600);
+
+    let server = tokio::spawn(async move { daemon.serve_one().await });
+    let client = MindClient::new(endpoint, ActorName::new("operator"));
+    client
+        .submit(fixture.request())
+        .await
+        .expect("client receives reply frame");
+    server
+        .await
+        .expect("daemon task joins")
+        .expect("daemon serves one request");
 }
 
 #[tokio::test]

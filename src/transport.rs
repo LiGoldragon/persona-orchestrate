@@ -1,4 +1,5 @@
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use signal_core::{Reply, Request};
@@ -26,13 +27,17 @@ impl MindDaemonEndpoint {
         &self.socket
     }
 
-    fn bind_listener(&self) -> Result<UnixListener> {
+    fn bind_listener(&self, mode: Option<MindSocketMode>) -> Result<UnixListener> {
         match fs::remove_file(&self.socket) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.into()),
         }
-        Ok(UnixListener::bind(&self.socket)?)
+        let listener = UnixListener::bind(&self.socket)?;
+        if let Some(mode) = mode {
+            fs::set_permissions(&self.socket, fs::Permissions::from_mode(mode.as_octal()))?;
+        }
+        Ok(listener)
     }
 
     fn remove_socket(&self) -> Result<()> {
@@ -41,6 +46,26 @@ impl MindDaemonEndpoint {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error.into()),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MindSocketMode(u32);
+
+impl MindSocketMode {
+    pub const fn new(value: u32) -> Self {
+        Self(value)
+    }
+
+    pub fn from_environment() -> Option<Self> {
+        std::env::var("PERSONA_SOCKET_MODE")
+            .ok()
+            .and_then(|value| u32::from_str_radix(value.as_str(), 8).ok())
+            .map(Self::new)
+    }
+
+    pub const fn as_octal(self) -> u32 {
+        self.0
     }
 }
 
@@ -138,6 +163,7 @@ impl MindClient {
 pub struct MindDaemon {
     endpoint: MindDaemonEndpoint,
     store: StoreLocation,
+    socket_mode: Option<MindSocketMode>,
     codec: MindFrameCodec,
 }
 
@@ -146,12 +172,18 @@ impl MindDaemon {
         Self {
             endpoint,
             store,
+            socket_mode: MindSocketMode::from_environment(),
             codec: MindFrameCodec::default(),
         }
     }
 
+    pub fn with_socket_mode(mut self, socket_mode: MindSocketMode) -> Self {
+        self.socket_mode = Some(socket_mode);
+        self
+    }
+
     pub async fn bind(self) -> Result<BoundMindDaemon> {
-        let listener = self.endpoint.bind_listener()?;
+        let listener = self.endpoint.bind_listener(self.socket_mode)?;
         let root = MindRoot::start(MindRootArguments::new(self.store)).await?;
         Ok(BoundMindDaemon {
             endpoint: self.endpoint,

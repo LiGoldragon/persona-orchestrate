@@ -502,6 +502,7 @@ constraints:
 | `memory_state_cannot_hide_mutation_behind_refcell` | memory mutation is actor-owned mutable state, not interior mutability. |
 | `query_ready_uses_reader_without_writer` | read path cannot mutate state. |
 | `daemon_round_trip_uses_signal_frames_over_socket` | one socket request/reply crosses the Signal-frame transport and reaches `MindRoot`. |
+| `constraint_mind_daemon_applies_spawn_envelope_socket_mode` | daemon bind applies the manager-provided socket mode before the manager can count the component as socket-ready. |
 | `daemon_uses_signal_auth_for_actor_identity` | caller identity is derived from Signal auth before building `MindEnvelope`. |
 | `daemon_rejects_request_frames_without_auth` | daemon cannot accept unauthenticated request frames. |
 | `client_cannot_reply_without_daemon_signal_frame` | clients cannot fabricate successful daemon replies. |
