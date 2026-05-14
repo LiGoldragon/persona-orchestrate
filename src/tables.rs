@@ -752,7 +752,7 @@ impl ScopeKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use signal_core::SemaVerb;
+    use signal_core::SignalVerb;
     use signal_persona_mind::{
         ByThoughtKind, GoalBody, GoalScope, TextBody, ThoughtBody, ThoughtFilter, ThoughtKind,
         WorkspaceGoal,
@@ -838,7 +838,7 @@ mod tests {
         assert_eq!(thought.id.as_str(), "aaa");
         assert_eq!(records, vec![thought.clone()]);
         assert_eq!(log.len(), 1);
-        assert_eq!(log[0].verb(), SemaVerb::Assert);
+        assert_eq!(log[0].verb(), SignalVerb::Assert);
         assert_eq!(log[0].table_name(), "thoughts");
         assert_eq!(
             log[0].key().map(RecordKey::as_str),

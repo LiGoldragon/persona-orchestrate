@@ -8,8 +8,9 @@ command-line mind.*
 > Typed Thought/Relation graph records use `sema-engine` for Assert/Match and
 > operation-log snapshots. Typed graph subscriptions register through
 > `sema-engine` Subscribe and keep only Persona-specific filter rows locally;
-> post-commit push delivery is still incomplete. Older tables still use the
-> same underlying `sema` kernel handle. The crate also has a Unix-socket
+> post-commit push delivery now enters the `SubscriptionSupervisor` actor path,
+> while the external long-lived streaming surface remains future work. Older
+> tables still use the same underlying `sema` kernel handle. The crate also has a Unix-socket
 > Signal-frame daemon/client transport around `MindRoot`. The
 > `mind` binary can run a daemon and submit NOTA role
 > claim/release/handoff/observation, activity submission/query, and work-graph

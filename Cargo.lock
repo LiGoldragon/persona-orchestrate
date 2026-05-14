@@ -413,7 +413,7 @@ dependencies = [
 [[package]]
 name = "sema-engine"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/sema-engine.git#b8dbce2ff2599e5038965de570ce0d4a2032224d"
+source = "git+https://github.com/LiGoldragon/sema-engine.git#9e59fc4f78fd44eb365df44c11dedf12566514e1"
 dependencies = [
  "rkyv",
  "sema",
@@ -454,7 +454,7 @@ dependencies = [
 [[package]]
 name = "signal-core"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-core.git#1299471abadc315f0327957b67fe5446aa5211d2"
+source = "git+https://github.com/LiGoldragon/signal-core.git#1bceb10814fb51853ad6f5eafcf2c478632ea8ef"
 dependencies = [
  "nota-codec",
  "rkyv",
@@ -474,7 +474,7 @@ dependencies = [
 [[package]]
 name = "signal-persona-mind"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-persona-mind.git#93b0f2600031b27273d98173885cde72723670dd"
+source = "git+https://github.com/LiGoldragon/signal-persona-mind.git#8f0414f95044593e799c2a097feaebb62cf098e8"
 dependencies = [
  "nota-codec",
  "rkyv",
