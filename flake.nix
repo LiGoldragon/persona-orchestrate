@@ -159,6 +159,27 @@
               cargoTestExtraArgs = "--test actor_topology typed_relation_subscription_registers_and_returns_initial_snapshot";
             }
           );
+          mind-typed-thought-subscription-delivers-live-delta-through-subscription-actor = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test actor_topology typed_thought_subscription_delivers_live_delta_through_subscription_actor";
+            }
+          );
+          mind-typed-relation-subscription-delivers-live-delta-through-subscription-actor = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test actor_topology typed_relation_subscription_delivers_live_delta_through_subscription_actor";
+            }
+          );
+          mind-graph-subscription-deltas-cannot-stop-at-table-sink = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test weird_actor_truth graph_subscription_deltas_cannot_stop_at_table_sink";
+            }
+          );
           mind-thought-subscription-is-durable-table-data = craneLib.cargoTest (
             commonArgs
             // {

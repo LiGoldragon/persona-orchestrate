@@ -179,17 +179,17 @@ impl<'tables> MindGraphLedger<'tables> {
     }
 }
 
-struct ThoughtSelector {
+pub(crate) struct ThoughtSelector {
     filter: ThoughtFilter,
     relations: Vec<Relation>,
 }
 
 impl ThoughtSelector {
-    fn new(filter: ThoughtFilter, relations: Vec<Relation>) -> Self {
+    pub(crate) fn new(filter: ThoughtFilter, relations: Vec<Relation>) -> Self {
         Self { filter, relations }
     }
 
-    fn accepts(&self, thought: &Thought) -> bool {
+    pub(crate) fn accepts(&self, thought: &Thought) -> bool {
         !self.is_superseded(thought) && self.accepts_filter(thought, &self.filter)
     }
 
@@ -264,16 +264,16 @@ impl ThoughtSelector {
     }
 }
 
-struct RelationSelector {
+pub(crate) struct RelationSelector {
     filter: RelationFilter,
 }
 
 impl RelationSelector {
-    fn new(filter: RelationFilter) -> Self {
+    pub(crate) fn new(filter: RelationFilter) -> Self {
         Self { filter }
     }
 
-    fn accepts(&self, relation: &Relation) -> bool {
+    pub(crate) fn accepts(&self, relation: &Relation) -> bool {
         self.accepts_filter(relation, &self.filter)
     }
 

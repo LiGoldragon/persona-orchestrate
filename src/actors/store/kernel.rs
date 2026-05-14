@@ -3,12 +3,20 @@ use kameo::message::{Context, Message};
 use signal_persona_mind::{MindReply, MindRequest};
 
 use crate::graph::MindGraphLedger;
+use crate::tables::GraphSubscriptionPublisher;
 use crate::{ActivityLedger, ClaimLedger, MemoryGraph, MindEnvelope, MindTables, StoreLocation};
 
+use super::GraphRecords;
 use super::persistence::PersistenceRejection;
 
 pub(super) struct StoreKernel {
     tables: MindTables,
+}
+
+#[derive(Clone)]
+pub(super) struct Arguments {
+    pub(super) store: StoreLocation,
+    pub(super) subscription: ActorRef<crate::actors::subscription::SubscriptionSupervisor>,
 }
 
 pub(super) struct CommitMemoryGraph {
@@ -60,6 +68,8 @@ pub(super) struct SubscribeThoughts {
 pub(super) struct SubscribeRelations {
     envelope: MindEnvelope,
 }
+
+pub(super) struct ReadGraphRecords;
 
 #[derive(kameo::Reply)]
 pub(super) struct KernelReply {
@@ -170,9 +180,12 @@ impl SubscribeRelations {
 }
 
 impl StoreKernel {
-    fn open(store: StoreLocation) -> crate::Result<Self> {
+    fn open(arguments: Arguments) -> crate::Result<Self> {
         Ok(Self {
-            tables: MindTables::open(&store)?,
+            tables: MindTables::open(
+                &arguments.store,
+                GraphSubscriptionPublisher::actor(arguments.subscription),
+            )?,
         })
     }
 
@@ -310,17 +323,23 @@ impl StoreKernel {
 
         KernelReply::new(reply)
     }
+
+    fn read_graph_records(&self) -> GraphRecords {
+        GraphRecords {
+            relations: self.tables.relation_records().unwrap_or_default(),
+        }
+    }
 }
 
 impl Actor for StoreKernel {
-    type Args = StoreLocation;
+    type Args = Arguments;
     type Error = crate::Error;
 
     async fn on_start(
-        store: Self::Args,
+        arguments: Self::Args,
         _actor_reference: ActorRef<Self>,
     ) -> Result<Self, Self::Error> {
-        Self::open(store)
+        Self::open(arguments)
     }
 }
 
@@ -477,5 +496,17 @@ impl Message<SubscribeRelations> for StoreKernel {
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         self.subscribe_relations(message.envelope)
+    }
+}
+
+impl Message<ReadGraphRecords> for StoreKernel {
+    type Reply = GraphRecords;
+
+    async fn handle(
+        &mut self,
+        _message: ReadGraphRecords,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.read_graph_records()
     }
 }

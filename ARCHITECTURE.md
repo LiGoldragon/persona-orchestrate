@@ -211,6 +211,11 @@ Current implementation:
   queries, registers subscriptions through `sema-engine` Subscribe, and stores
   only Persona-specific subscription filters through the same `sema` kernel
   handle.
+- `SubscriptionSupervisor` receives post-commit graph deltas from
+  `sema-engine` subscription sinks and publishes typed
+  `signal-persona-mind::SubscriptionEvent` records for matching durable
+  filters. Thought filters are evaluated against the current relation snapshot
+  through the store actor path; relation filters are evaluated directly.
 - Work/memory mutations append typed `Event` values in the reducer, then
   replace the typed Sema graph snapshot before success replies are emitted.
 - Queries read the loaded work graph through `MemoryStore` and produce typed
@@ -510,6 +515,7 @@ constraints:
 | `typed_thought_query_uses_reader_without_writer` | typed graph queries are read-only. |
 | `typed_graph_records_cannot_bypass_sema_engine` | typed graph records cannot be inserted through direct `sema` tables. |
 | `graph_subscriptions_cannot_bypass_sema_engine_subscribe` | graph subscriptions cannot mint local cursor IDs or skip `sema-engine` Subscribe. |
+| `graph_subscription_deltas_cannot_stop_at_table_sink` | graph subscription deltas must leave the `sema-engine` sink as typed actor messages and become contract subscription events. |
 | `mind_lockfile_cannot_resolve_two_sema_kernels` | Cargo cannot resolve duplicate `sema` / `signal-core` sources while `persona-mind` consumes `sema-engine`. |
 | `typed_relation_rejects_missing_thought_endpoint` | relation endpoints are real thought IDs, not unchecked strings. |
 | `relation_kind_rejects_wrong_domain` | relation domain/range rules come from `signal-persona-mind` and reject invalid endpoints before persistence. |
@@ -518,6 +524,9 @@ constraints:
 | `supersedes_relation_rejects_different_thought_kinds` | cross-kind supersession is rejected before persistence. |
 | `typed_thought_subscription_registers_and_returns_initial_snapshot` | thought subscriptions register through `sema-engine`, persist a filter, and return matching durable thoughts. |
 | `typed_relation_subscription_registers_and_returns_initial_snapshot` | relation subscriptions register through `sema-engine`, persist a filter, and return matching durable relations. |
+| `typed_thought_subscription_delivers_live_delta_through_subscription_actor` | a matching Thought append produces a typed `SubscriptionEvent` through `SubscriptionSupervisor`. |
+| `typed_relation_subscription_delivers_live_delta_through_subscription_actor` | a matching Relation append produces a typed `SubscriptionEvent` through `SubscriptionSupervisor`. |
+| `typed_thought_subscription_filters_live_nonmatching_delta` | a nonmatching Thought append does not leak through a durable subscription filter. |
 | `thought_subscription_is_durable_table_data` | subscription rows survive closing and reopening the Sema database handle. |
 | `typed_subscription_registration_uses_sema_engine_catalog` | graph subscription IDs and registrations come from `sema-engine`, not local slot cursors. |
 | `mind_typed_thought_graph_survives_process_restart` | typed thoughts are durable across daemon restart. |
@@ -543,7 +552,7 @@ src/actors/store/kernel.rs store kernel and `MindTables` owner
 src/actors/store/graph.rs  typed Thought/Relation graph actor lane
 src/actors/view.rs         query/read-view path
 src/actors/reply.rs        typed reply shaping path
-src/actors/subscription.rs post-commit push actor placeholder
+src/actors/subscription.rs post-commit graph subscription event actor
 src/actors/manifest.rs     actor topology manifest
 src/actors/trace.rs        actor trace witness types
 src/activity.rs            activity append/query ledger over mind-local Sema

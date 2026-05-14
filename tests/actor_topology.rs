@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use persona_mind::actors::{ActorManifest, ActorResidency, TraceAction, TraceNode};
+use persona_mind::actors::{
+    ActorManifest, ActorResidency, ReadSubscriptionEvents, TraceAction, TraceNode,
+};
 use persona_mind::{
     ActorRef, MindEnvelope, MindRoot, MindRootArguments, MindRootReply, StoreLocation,
     SubmitEnvelope,
@@ -9,11 +11,12 @@ use persona_mind::{
 use signal_persona_mind::{
     ActiveClaim, ActivityFilter, ActivityQuery, ActivitySubmission, ActorName, ByRelationKind,
     ByThoughtKind, ClaimActivity, ClaimBody, ClaimScope, FileReference, GoalBody, GoalScope,
-    ItemKind, ItemPriority, MindReply, MindRequest, Opening, PathClaimScope, Query, QueryKind,
-    QueryLimit, QueryRelations, QueryThoughts, ReferenceBody, ReferenceTarget, RelationFilter,
-    RelationKind, RoleClaim, RoleHandoff, RoleName, RoleObservation, RoleRelease, ScopeReason,
-    ScopeReference, SubmitRelation, SubmitThought, SubscribeRelations, SubscribeThoughts, TextBody,
-    ThoughtBody, ThoughtFilter, ThoughtKind, TimestampNanos, Title, WirePath, WorkspaceGoal,
+    ItemKind, ItemPriority, MindDelta, MindReply, MindRequest, Opening, PathClaimScope, Query,
+    QueryKind, QueryLimit, QueryRelations, QueryThoughts, ReferenceBody, ReferenceTarget,
+    RelationFilter, RelationKind, RoleClaim, RoleHandoff, RoleName, RoleObservation, RoleRelease,
+    ScopeReason, ScopeReference, SubmitRelation, SubmitThought, SubscribeRelations,
+    SubscribeThoughts, TextBody, ThoughtBody, ThoughtFilter, ThoughtKind, TimestampNanos, Title,
+    WirePath, WorkspaceGoal,
 };
 
 struct ActorFixture {
@@ -58,6 +61,15 @@ impl ActorFixture {
             })
             .await
             .expect("actor request succeeds")
+    }
+
+    async fn subscription_events(&self) -> Vec<signal_persona_mind::SubscriptionEvent> {
+        self.root
+            .ask(ReadSubscriptionEvents::all())
+            .await
+            .expect("subscription event read succeeds")
+            .events()
+            .to_vec()
     }
 
     async fn stop(self) {
@@ -707,6 +719,80 @@ async fn typed_thought_subscription_registers_and_returns_initial_snapshot() {
 }
 
 #[tokio::test]
+async fn typed_thought_subscription_delivers_live_delta_through_subscription_actor() {
+    let fixture = ActorFixture::new().await;
+    let subscription_response = fixture
+        .submit(MindRequest::SubscribeThoughts(SubscribeThoughts {
+            filter: ThoughtFilter::ByKind(ByThoughtKind {
+                kinds: vec![ThoughtKind::Goal],
+            }),
+        }))
+        .await;
+
+    let MindReply::SubscriptionAccepted(subscription) =
+        subscription_response.reply().expect("reply exists")
+    else {
+        panic!("expected subscription accepted");
+    };
+
+    let commit_response = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("Deliver a live thought delta"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await;
+    let events = fixture.subscription_events().await;
+
+    let MindReply::ThoughtCommitted(receipt) = commit_response.reply().expect("reply exists")
+    else {
+        panic!("expected thought commit");
+    };
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].subscription, subscription.subscription);
+    let MindDelta::ThoughtCommitted(thought) = &events[0].delta else {
+        panic!("expected thought delta");
+    };
+    assert_eq!(thought.id, receipt.record);
+    assert_eq!(thought.kind, ThoughtKind::Goal);
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn typed_thought_subscription_filters_live_nonmatching_delta() {
+    let fixture = ActorFixture::new().await;
+    let _subscription = fixture
+        .submit(MindRequest::SubscribeThoughts(SubscribeThoughts {
+            filter: ThoughtFilter::ByKind(ByThoughtKind {
+                kinds: vec![ThoughtKind::Decision],
+            }),
+        }))
+        .await;
+
+    let _commit = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("This is not a decision"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await;
+    let events = fixture.subscription_events().await;
+
+    assert!(events.is_empty());
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
 async fn typed_relation_subscription_registers_and_returns_initial_snapshot() {
     let fixture = ActorFixture::new().await;
     let goal = fixture
@@ -784,6 +870,84 @@ async fn typed_relation_subscription_registers_and_returns_initial_snapshot() {
         TraceNode::COMMIT,
         TraceNode::REPLY_SUPERVISOR,
     ]));
+
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn typed_relation_subscription_delivers_live_delta_through_subscription_actor() {
+    let fixture = ActorFixture::new().await;
+    let goal = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new("Relation live delta target"),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }))
+        .await;
+    let claim = fixture
+        .submit(MindRequest::SubmitThought(SubmitThought {
+            kind: ThoughtKind::Claim,
+            body: ThoughtBody::Claim(ClaimBody {
+                claimed_by: ActorName::new("operator"),
+                scope: ClaimScope::Paths(PathClaimScope {
+                    paths: vec![
+                        WirePath::from_absolute_path("/git/github.com/LiGoldragon/persona-mind")
+                            .expect("absolute path"),
+                    ],
+                }),
+                role: RoleName::Operator,
+                activity: ClaimActivity::Active(ActiveClaim {
+                    started_at: TimestampNanos::new(1),
+                }),
+            }),
+        }))
+        .await;
+
+    let MindReply::ThoughtCommitted(goal) = goal.reply().expect("goal reply exists") else {
+        panic!("expected goal commit");
+    };
+    let MindReply::ThoughtCommitted(claim) = claim.reply().expect("claim reply exists") else {
+        panic!("expected claim commit");
+    };
+
+    let subscription_response = fixture
+        .submit(MindRequest::SubscribeRelations(SubscribeRelations {
+            filter: RelationFilter::ByKind(ByRelationKind {
+                kinds: vec![RelationKind::Implements],
+            }),
+        }))
+        .await;
+    let MindReply::SubscriptionAccepted(subscription) =
+        subscription_response.reply().expect("reply exists")
+    else {
+        panic!("expected subscription accepted");
+    };
+
+    let commit_response = fixture
+        .submit(MindRequest::SubmitRelation(SubmitRelation {
+            kind: RelationKind::Implements,
+            source: claim.record.clone(),
+            target: goal.record.clone(),
+            note: None,
+        }))
+        .await;
+    let events = fixture.subscription_events().await;
+
+    let MindReply::RelationCommitted(receipt) = commit_response.reply().expect("reply exists")
+    else {
+        panic!("expected relation commit");
+    };
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].subscription, subscription.subscription);
+    let MindDelta::RelationCommitted(relation) = &events[0].delta else {
+        panic!("expected relation delta");
+    };
+    assert_eq!(relation.id, receipt.relation);
+    assert_eq!(relation.kind, RelationKind::Implements);
 
     fixture.stop().await;
 }

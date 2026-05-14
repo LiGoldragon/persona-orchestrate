@@ -403,7 +403,7 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 [[package]]
 name = "sema"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/sema.git#57ad38cbb7f56a5d035e4796729596a35fad7cae"
+source = "git+https://github.com/LiGoldragon/sema.git#4a5cb7eda1492a44195d4345eef396f4be15d85a"
 dependencies = [
  "redb",
  "rkyv",
@@ -413,7 +413,7 @@ dependencies = [
 [[package]]
 name = "sema-engine"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/sema-engine.git#c88b36641cac849b8f2397c0172908108edb9ab4"
+source = "git+https://github.com/LiGoldragon/sema-engine.git#b8dbce2ff2599e5038965de570ce0d4a2032224d"
 dependencies = [
  "rkyv",
  "sema",

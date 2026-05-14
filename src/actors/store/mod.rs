@@ -23,6 +23,7 @@ use persistence::PersistenceRejection;
 #[derive(Clone)]
 pub(super) struct Arguments {
     pub(super) store: StoreLocation,
+    pub(super) subscription: ActorRef<super::subscription::SubscriptionSupervisor>,
 }
 
 pub(super) struct StoreSupervisor {
@@ -95,6 +96,13 @@ pub struct SubscribeThoughts {
 pub struct SubscribeRelations {
     pub envelope: MindEnvelope,
     pub trace: ActorTrace,
+}
+
+pub(super) struct ReadGraphRecords;
+
+#[derive(kameo::Reply)]
+pub(super) struct GraphRecords {
+    pub(super) relations: Vec<signal_persona_mind::Relation>,
 }
 
 impl StoreSupervisor {
@@ -267,6 +275,13 @@ impl StoreSupervisor {
             .await
             .map_err(|error| crate::Error::ActorCall(error.to_string()))
     }
+
+    async fn read_graph_records(&self) -> crate::Result<GraphRecords> {
+        self.graph
+            .ask(graph::ReadGraphRecords)
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
 }
 
 impl Actor for StoreSupervisor {
@@ -277,9 +292,15 @@ impl Actor for StoreSupervisor {
         arguments: Self::Args,
         actor_reference: ActorRef<Self>,
     ) -> Result<Self, Self::Error> {
-        let kernel = StoreKernel::supervise(&actor_reference, arguments.store.clone())
-            .spawn()
-            .await;
+        let kernel = StoreKernel::supervise(
+            &actor_reference,
+            kernel::Arguments {
+                store: arguments.store.clone(),
+                subscription: arguments.subscription.clone(),
+            },
+        )
+        .spawn()
+        .await;
         let graph = kernel
             .ask(LoadMemoryGraph)
             .await
@@ -320,6 +341,22 @@ impl Actor for StoreSupervisor {
         .await;
 
         Ok(Self::new(memory, claims, activity, graph))
+    }
+}
+
+impl Message<ReadGraphRecords> for StoreSupervisor {
+    type Reply = GraphRecords;
+
+    async fn handle(
+        &mut self,
+        _message: ReadGraphRecords,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.read_graph_records()
+            .await
+            .unwrap_or_else(|_| GraphRecords {
+                relations: Vec::new(),
+            })
     }
 }
 

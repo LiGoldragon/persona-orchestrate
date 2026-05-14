@@ -10,6 +10,7 @@ use super::{dispatch, domain, ingress, reply, store, subscription, view};
 
 pub struct MindRoot {
     ingress: ActorRef<ingress::IngressPhase>,
+    subscription: ActorRef<subscription::SubscriptionSupervisor>,
 }
 
 pub struct Arguments {
@@ -47,8 +48,14 @@ impl RootReply {
 }
 
 impl MindRoot {
-    fn new(ingress: ActorRef<ingress::IngressPhase>) -> Self {
-        Self { ingress }
+    fn new(
+        ingress: ActorRef<ingress::IngressPhase>,
+        subscription: ActorRef<subscription::SubscriptionSupervisor>,
+    ) -> Self {
+        Self {
+            ingress,
+            subscription,
+        }
     }
 
     pub async fn start(arguments: Arguments) -> Result<ActorRef<Self>> {
@@ -91,21 +98,27 @@ impl Actor for MindRoot {
         arguments: Self::Args,
         actor_reference: ActorRef<Self>,
     ) -> std::result::Result<Self, Self::Error> {
-        let store = store::StoreSupervisor::supervise(
-            &actor_reference,
-            store::Arguments {
-                store: arguments.store.clone(),
-            },
-        )
-        .spawn()
-        .await;
-
-        let _subscription = subscription::SubscriptionSupervisor::supervise(
+        let subscription = subscription::SubscriptionSupervisor::supervise(
             &actor_reference,
             subscription::Arguments::default(),
         )
         .spawn()
         .await;
+
+        let store = store::StoreSupervisor::supervise(
+            &actor_reference,
+            store::Arguments {
+                store: arguments.store.clone(),
+                subscription: subscription.clone(),
+            },
+        )
+        .spawn()
+        .await;
+        let _store_is_bound = subscription
+            .ask(subscription::BindStore::new(store.clone()))
+            .await
+            .map(|receipt| receipt.is_bound())
+            .unwrap_or(false);
 
         let reply =
             reply::ReplySupervisor::supervise(&actor_reference, reply::Arguments::default())
@@ -146,7 +159,7 @@ impl Actor for MindRoot {
                 .spawn()
                 .await;
 
-        Ok(Self::new(ingress))
+        Ok(Self::new(ingress, subscription))
     }
 }
 
@@ -167,5 +180,20 @@ impl Message<SubmitEnvelope> for MindRoot {
                 RootReply::new(None, trace)
             }
         }
+    }
+}
+
+impl Message<subscription::ReadSubscriptionEvents> for MindRoot {
+    type Reply = subscription::SubscriptionEventLog;
+
+    async fn handle(
+        &mut self,
+        message: subscription::ReadSubscriptionEvents,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.subscription
+            .ask(message)
+            .await
+            .unwrap_or_else(|_| subscription::SubscriptionEventLog::empty())
     }
 }

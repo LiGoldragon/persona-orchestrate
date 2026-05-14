@@ -14,9 +14,12 @@ Rules for work here:
   writes one `mind.redb`. The mind state actor sequences writes through that
   database; no shared cross-component DB.
 - Typed Thought/Relation graph records use `sema-engine` for Assert/Match,
-  operation-log snapshots, and subscription registration. Unmigrated tables use
-  `Engine::storage_kernel()`; do not open a second `sema::Sema` handle to the
-  same `mind.redb`.
+  operation-log snapshots, subscription registration, and post-commit
+  subscription delta delivery. Unmigrated tables use `Engine::storage_kernel()`;
+  do not open a second `sema::Sema` handle to the same `mind.redb`.
+- Graph subscription deltas must become typed
+  `signal-persona-mind::SubscriptionEvent` values through
+  `SubscriptionSupervisor`; do not leave delivery as a table-level callback.
 - Memory/work mutations append typed events; item state and ready-work lists are
   projections.
 - Typed mind graph mutations append immutable `Thought` / `Relation` records;

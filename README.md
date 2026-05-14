@@ -9,6 +9,7 @@ It is not Persona's runtime router or harness adapter. The current runtime is
 `kameo`-backed and in-process; durable `mind.redb` storage through the
 mind-owned Sema layer is the storage target. Typed Thought/Relation graph
 records now pass through `sema-engine` assertions, match queries, and
-subscription registration. Older claim/activity/work tables still use the same
-underlying `sema` kernel handle while they await migration. Lock files are
-compatibility debris, not durable truth for this crate.
+subscription registration plus post-commit subscription delta delivery through
+the `SubscriptionSupervisor` actor. Older claim/activity/work tables still use
+the same underlying `sema` kernel handle while they await migration. Lock files
+are compatibility debris, not durable truth for this crate.

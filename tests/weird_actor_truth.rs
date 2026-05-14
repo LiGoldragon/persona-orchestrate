@@ -741,6 +741,30 @@ fn graph_subscriptions_cannot_bypass_sema_engine_subscribe() {
 }
 
 #[test]
+fn graph_subscription_deltas_cannot_stop_at_table_sink() {
+    let tables = SourceTree::new().file("src/tables.rs");
+    let subscription_actor = SourceTree::new().file("src/actors/subscription.rs");
+
+    assert!(
+        tables.text.contains("SubscriptionDeliveryMode::Inline"),
+        "persona-mind subscription sinks must use inline sema-engine delivery so actor tests can observe post-commit deltas without polling"
+    );
+    assert!(
+        tables.text.contains("PublishThoughtDelta") && tables.text.contains("PublishRelationDelta"),
+        "sema-engine deltas must be translated into typed persona-mind subscription actor messages"
+    );
+    assert!(
+        subscription_actor
+            .text
+            .contains("MindDelta::ThoughtCommitted")
+            && subscription_actor
+                .text
+                .contains("MindDelta::RelationCommitted"),
+        "subscription actor must publish typed signal-persona-mind delta variants, not raw table notifications"
+    );
+}
+
+#[test]
 fn mind_lockfile_cannot_resolve_two_sema_kernels() {
     let lock = SourceTree::new().file("Cargo.lock");
 

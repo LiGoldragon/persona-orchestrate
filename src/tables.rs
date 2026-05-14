@@ -1,10 +1,12 @@
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use kameo::actor::ActorRef;
 use sema::{SchemaVersion, Table};
 use sema_engine::{
     Assertion, Engine, EngineOpen, EngineRecord, QueryPlan, RecordKey, SinkError,
-    SubscriptionEvent, SubscriptionSink, TableDescriptor, TableName, TableReference,
+    SubscriptionDeliveryMode, SubscriptionEvent as EngineSubscriptionEvent, SubscriptionSink,
+    TableDescriptor, TableName, TableReference,
 };
 use signal_persona_mind::{
     Activity, ActorName, RecordId, Relation, RelationId, RoleName, ScopeReason, ScopeReference,
@@ -12,6 +14,9 @@ use signal_persona_mind::{
     TimestampNanos,
 };
 
+use crate::actors::subscription::{
+    PublishRelationDelta, PublishThoughtDelta, SubscriptionSupervisor,
+};
 use crate::{MemoryGraph, Result, StoreLocation};
 
 const MIND_SCHEMA_VERSION: SchemaVersion = SchemaVersion::new(7);
@@ -33,6 +38,7 @@ pub struct MindTables {
     engine: Engine,
     thoughts: TableReference<StoredThought>,
     relations: TableReference<StoredRelation>,
+    subscription_publisher: GraphSubscriptionPublisher,
 }
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -81,6 +87,13 @@ pub(crate) struct OpenedThoughtSubscription {
 pub(crate) struct OpenedRelationSubscription {
     record: StoredRelationSubscription,
     initial: Vec<Relation>,
+}
+
+#[derive(Clone)]
+pub(crate) enum GraphSubscriptionPublisher {
+    Actor(ActorRef<SubscriptionSupervisor>),
+    #[cfg(test)]
+    Disabled,
 }
 
 impl StoredThought {
@@ -185,7 +198,10 @@ impl StoredClaim {
 }
 
 impl MindTables {
-    pub fn open(store: &StoreLocation) -> Result<Self> {
+    pub(crate) fn open(
+        store: &StoreLocation,
+        subscription_publisher: GraphSubscriptionPublisher,
+    ) -> Result<Self> {
         let mut engine = Engine::open(EngineOpen::new(store.as_path(), MIND_SCHEMA_VERSION))?;
         engine.storage_kernel().write(|transaction| {
             CLAIMS.ensure(transaction)?;
@@ -202,6 +218,7 @@ impl MindTables {
             engine,
             thoughts,
             relations,
+            subscription_publisher,
         })
     }
 
@@ -360,9 +377,14 @@ impl MindTables {
         &self,
         subscription: SubscribeThoughts,
     ) -> Result<OpenedThoughtSubscription> {
+        let filter = subscription.filter;
         let receipt = self.engine.subscribe(
             QueryPlan::all(self.thoughts),
-            GraphSubscriptionSink::new(THOUGHTS),
+            ThoughtSubscriptionSink::new(
+                THOUGHTS,
+                filter.clone(),
+                self.subscription_publisher.clone(),
+            ),
         )?;
         let initial = receipt
             .initial()
@@ -374,7 +396,7 @@ impl MindTables {
             .collect();
         let record = StoredThoughtSubscription {
             subscription: Self::subscription_id_from_engine(receipt.handle().id()),
-            filter: subscription.filter,
+            filter,
         };
         self.engine.storage_kernel().write(|transaction| {
             THOUGHT_SUBSCRIPTIONS.insert(transaction, record.subscription.as_str(), &record)?;
@@ -387,9 +409,14 @@ impl MindTables {
         &self,
         subscription: SubscribeRelations,
     ) -> Result<OpenedRelationSubscription> {
+        let filter = subscription.filter;
         let receipt = self.engine.subscribe(
             QueryPlan::all(self.relations),
-            GraphSubscriptionSink::new(RELATIONS),
+            RelationSubscriptionSink::new(
+                RELATIONS,
+                filter.clone(),
+                self.subscription_publisher.clone(),
+            ),
         )?;
         let initial = receipt
             .initial()
@@ -401,7 +428,7 @@ impl MindTables {
             .collect();
         let record = StoredRelationSubscription {
             subscription: Self::subscription_id_from_engine(receipt.handle().id()),
-            filter: subscription.filter,
+            filter,
         };
         self.engine.storage_kernel().write(|transaction| {
             RELATION_SUBSCRIPTIONS.insert(transaction, record.subscription.as_str(), &record)?;
@@ -441,6 +468,49 @@ impl MindTables {
     }
 }
 
+impl GraphSubscriptionPublisher {
+    pub(crate) fn actor(actor: ActorRef<SubscriptionSupervisor>) -> Self {
+        Self::Actor(actor)
+    }
+
+    #[cfg(test)]
+    fn disabled() -> Self {
+        Self::Disabled
+    }
+
+    fn publish_thought(
+        &self,
+        subscription: SubscriptionId,
+        filter: signal_persona_mind::ThoughtFilter,
+        thought: Thought,
+    ) -> std::result::Result<(), SinkError> {
+        match self {
+            Self::Actor(actor) => actor
+                .tell(PublishThoughtDelta::new(subscription, filter, thought))
+                .try_send()
+                .map_err(|error| SinkError::new(error.to_string())),
+            #[cfg(test)]
+            Self::Disabled => Ok(()),
+        }
+    }
+
+    fn publish_relation(
+        &self,
+        subscription: SubscriptionId,
+        filter: signal_persona_mind::RelationFilter,
+        relation: Relation,
+    ) -> std::result::Result<(), SinkError> {
+        match self {
+            Self::Actor(actor) => actor
+                .tell(PublishRelationDelta::new(subscription, filter, relation))
+                .try_send()
+                .map_err(|error| SinkError::new(error.to_string())),
+            #[cfg(test)]
+            Self::Disabled => Ok(()),
+        }
+    }
+}
+
 struct ActivitySlot {
     value: u64,
 }
@@ -449,8 +519,16 @@ struct GraphIdMint<'engine> {
     engine: &'engine Engine,
 }
 
-struct GraphSubscriptionSink {
+struct ThoughtSubscriptionSink {
     table: TableName,
+    filter: signal_persona_mind::ThoughtFilter,
+    publisher: GraphSubscriptionPublisher,
+}
+
+struct RelationSubscriptionSink {
+    table: TableName,
+    filter: signal_persona_mind::RelationFilter,
+    publisher: GraphSubscriptionPublisher,
 }
 
 impl<'engine> GraphIdMint<'engine> {
@@ -468,9 +546,17 @@ struct CompactGraphId {
     value: u64,
 }
 
-impl GraphSubscriptionSink {
-    fn new(table: TableName) -> Arc<Self> {
-        Arc::new(Self { table })
+impl ThoughtSubscriptionSink {
+    fn new(
+        table: TableName,
+        filter: signal_persona_mind::ThoughtFilter,
+        publisher: GraphSubscriptionPublisher,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            table,
+            filter,
+            publisher,
+        })
     }
 
     fn ensure_table(&self, table: &TableName) -> std::result::Result<(), SinkError> {
@@ -486,13 +572,78 @@ impl GraphSubscriptionSink {
     }
 }
 
-impl<RecordValue> SubscriptionSink<RecordValue> for GraphSubscriptionSink {
-    fn deliver(&self, event: SubscriptionEvent<RecordValue>) -> std::result::Result<(), SinkError> {
+impl RelationSubscriptionSink {
+    fn new(
+        table: TableName,
+        filter: signal_persona_mind::RelationFilter,
+        publisher: GraphSubscriptionPublisher,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            table,
+            filter,
+            publisher,
+        })
+    }
+
+    fn ensure_table(&self, table: &TableName) -> std::result::Result<(), SinkError> {
+        if self.table == *table {
+            return Ok(());
+        }
+
+        Err(SinkError::new(format!(
+            "subscription sink for {} received {}",
+            self.table.as_str(),
+            table.as_str()
+        )))
+    }
+}
+
+impl SubscriptionSink<StoredThought> for ThoughtSubscriptionSink {
+    fn delivery_mode(&self) -> SubscriptionDeliveryMode {
+        SubscriptionDeliveryMode::Inline
+    }
+
+    fn deliver(
+        &self,
+        event: EngineSubscriptionEvent<StoredThought>,
+    ) -> std::result::Result<(), SinkError> {
         match event {
-            SubscriptionEvent::InitialSnapshot(snapshot) => {
+            EngineSubscriptionEvent::InitialSnapshot(snapshot) => {
                 self.ensure_table(snapshot.handle().table())
             }
-            SubscriptionEvent::Delta(delta) => self.ensure_table(delta.table()),
+            EngineSubscriptionEvent::Delta(delta) => {
+                self.ensure_table(delta.table())?;
+                self.publisher.publish_thought(
+                    MindTables::subscription_id_from_engine(delta.handle().id()),
+                    self.filter.clone(),
+                    delta.record().clone().into_record(),
+                )
+            }
+        }
+    }
+}
+
+impl SubscriptionSink<StoredRelation> for RelationSubscriptionSink {
+    fn delivery_mode(&self) -> SubscriptionDeliveryMode {
+        SubscriptionDeliveryMode::Inline
+    }
+
+    fn deliver(
+        &self,
+        event: EngineSubscriptionEvent<StoredRelation>,
+    ) -> std::result::Result<(), SinkError> {
+        match event {
+            EngineSubscriptionEvent::InitialSnapshot(snapshot) => {
+                self.ensure_table(snapshot.handle().table())
+            }
+            EngineSubscriptionEvent::Delta(delta) => {
+                self.ensure_table(delta.table())?;
+                self.publisher.publish_relation(
+                    MindTables::subscription_id_from_engine(delta.handle().id()),
+                    self.filter.clone(),
+                    delta.record().clone().into_record(),
+                )
+            }
         }
     }
 }
@@ -610,7 +761,8 @@ mod tests {
     #[test]
     fn thought_subscription_is_durable_table_data() {
         let store = StoreLocation::new(unique_store_path("thought-subscription-durable"));
-        let tables = MindTables::open(&store).expect("tables open");
+        let tables =
+            MindTables::open(&store, GraphSubscriptionPublisher::disabled()).expect("tables open");
         let opened = tables
             .append_thought_subscription(SubscribeThoughts {
                 filter: ThoughtFilter::ByKind(ByThoughtKind {
@@ -621,7 +773,8 @@ mod tests {
         let stored = opened.record().clone();
         drop(tables);
 
-        let reopened = MindTables::open(&store).expect("tables reopen");
+        let reopened = MindTables::open(&store, GraphSubscriptionPublisher::disabled())
+            .expect("tables reopen");
         let persisted = reopened
             .engine
             .storage_kernel()
@@ -638,7 +791,8 @@ mod tests {
     #[test]
     fn typed_subscription_registration_uses_sema_engine_catalog() {
         let store = StoreLocation::new(unique_store_path("subscription-engine-catalog"));
-        let tables = MindTables::open(&store).expect("tables open");
+        let tables =
+            MindTables::open(&store, GraphSubscriptionPublisher::disabled()).expect("tables open");
         let opened = tables
             .append_thought_subscription(SubscribeThoughts {
                 filter: ThoughtFilter::ByKind(ByThoughtKind {
@@ -661,7 +815,8 @@ mod tests {
     #[test]
     fn typed_thought_append_uses_sema_engine_operation_log() {
         let store = StoreLocation::new(unique_store_path("thought-operation-log"));
-        let tables = MindTables::open(&store).expect("tables open");
+        let tables =
+            MindTables::open(&store, GraphSubscriptionPublisher::disabled()).expect("tables open");
         let thought = tables
             .append_thought(
                 ActorName::new("operator"),

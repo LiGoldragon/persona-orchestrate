@@ -12,4 +12,5 @@ pub(crate) mod subscription;
 pub(crate) mod view;
 
 pub use manifest::{ActorManifest, ActorResidency, ManifestEntry};
+pub use subscription::{ReadSubscriptionEvents, SubscriptionEventLog};
 pub use trace::{ActorTrace, TraceAction, TraceEvent, TraceNode};

@@ -4,11 +4,11 @@ use kameo::message::{Context, Message};
 use crate::MindEnvelope;
 
 use super::kernel::{
-    KernelReply, ReadRelations, ReadThoughts, StoreKernel, SubscribeRelations, SubscribeThoughts,
-    WriteRelation, WriteThought,
+    KernelReply, ReadGraphRecords as ReadKernelGraphRecords, ReadRelations, ReadThoughts,
+    StoreKernel, SubscribeRelations, SubscribeThoughts, WriteRelation, WriteThought,
 };
 use super::persistence::PersistenceRejection;
-use super::{ActorTrace, PipelineReply, TraceAction, TraceNode};
+use super::{ActorTrace, GraphRecords, PipelineReply, TraceAction, TraceNode};
 
 #[derive(Clone)]
 pub(super) struct Arguments {
@@ -44,6 +44,8 @@ pub(super) struct OpenRelationSubscription {
     pub(super) envelope: MindEnvelope,
     pub(super) trace: ActorTrace,
 }
+
+pub(super) struct ReadGraphRecords;
 
 pub(super) struct GraphStore {
     kernel: ActorRef<StoreKernel>,
@@ -171,6 +173,13 @@ impl GraphStore {
         trace.record(TraceNode::COMMIT, TraceAction::CommitCompleted);
         PipelineReply::new(reply, trace)
     }
+
+    async fn read_graph_records(&self) -> crate::Result<GraphRecords> {
+        self.kernel
+            .ask(ReadKernelGraphRecords)
+            .await
+            .map_err(|error| crate::Error::ActorCall(error.to_string()))
+    }
 }
 
 impl Actor for GraphStore {
@@ -256,5 +265,21 @@ impl Message<OpenRelationSubscription> for GraphStore {
     ) -> Self::Reply {
         self.subscribe_relations(message.envelope, message.trace)
             .await
+    }
+}
+
+impl Message<ReadGraphRecords> for GraphStore {
+    type Reply = GraphRecords;
+
+    async fn handle(
+        &mut self,
+        _message: ReadGraphRecords,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.read_graph_records()
+            .await
+            .unwrap_or_else(|_| GraphRecords {
+                relations: Vec::new(),
+            })
     }
 }
