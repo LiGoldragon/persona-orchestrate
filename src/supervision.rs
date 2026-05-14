@@ -301,7 +301,7 @@ impl SupervisionFrameCodec {
     async fn read_request(&self, stream: &mut UnixStream) -> Result<SupervisionRequest> {
         let frame = self.read_frame(stream).await?;
         match frame.into_body() {
-            FrameBody::Request(Request::Operation { payload, .. }) => Ok(payload),
+            FrameBody::Request(request) => Ok(request.into_payload_checked()?),
             _ => Err(crate::Error::UnexpectedFrame(
                 "expected supervision request operation",
             )),

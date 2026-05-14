@@ -2,7 +2,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use signal_core::{Reply, Request};
+use signal_core::Reply;
 use signal_persona_mind::{ActorName, Frame, FrameBody, MindReply, MindRequest};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
@@ -118,7 +118,7 @@ impl MindFrameCodec {
 
     pub fn request_from_frame(&self, frame: Frame) -> Result<MindRequest> {
         match frame.into_body() {
-            FrameBody::Request(Request::Operation { payload, .. }) => Ok(payload),
+            FrameBody::Request(request) => Ok(request.into_payload_checked()?),
             _ => Err(Error::UnexpectedFrame("expected mind request operation")),
         }
     }

@@ -23,6 +23,9 @@ pub enum Error {
     #[error("signal frame: {0}")]
     SignalFrame(#[from] signal_core::FrameError),
 
+    #[error("signal verb mismatch: {0}")]
+    SignalVerbMismatch(#[from] signal_core::SignalVerbMismatch),
+
     #[error("signal persona mind: {0}")]
     SignalPersonaMind(#[from] signal_persona_mind::Error),
 

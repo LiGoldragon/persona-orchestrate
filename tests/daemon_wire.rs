@@ -6,6 +6,7 @@ use persona_mind::{
     MindClient, MindDaemon, MindDaemonEndpoint, MindFrameCodec, MindSocketMode, StoreLocation,
     SupervisionFrameCodec, SupervisionListener, SupervisionSocketMode,
 };
+use signal_core::{Request, SignalVerb};
 use signal_persona::{
     ComponentHealth, ComponentHealthQuery, ComponentHello, ComponentKind, ComponentName,
     ComponentReadinessQuery, SupervisionProtocolVersion, SupervisionReply, SupervisionRequest,
@@ -87,6 +88,22 @@ async fn daemon_round_trip_uses_signal_frames_over_socket() {
         panic!("expected opening receipt");
     };
     assert_eq!(receipt.event.header.actor, ActorName::new("operator"));
+}
+
+#[test]
+fn mind_frame_codec_rejects_mismatched_signal_verb() {
+    let frame = Frame::new(FrameBody::Request(Request::unchecked_operation(
+        SignalVerb::Assert,
+        MindRequest::from(QueryThoughts {
+            filter: ThoughtFilter::ByKind(ByThoughtKind { kinds: Vec::new() }),
+            limit: 1,
+        }),
+    )));
+    let error = MindFrameCodec::default()
+        .request_from_frame(frame)
+        .expect_err("mismatched verb is rejected");
+
+    assert!(error.to_string().contains("signal verb mismatch"));
 }
 
 #[tokio::test]
