@@ -9,6 +9,7 @@ use tokio::net::{UnixListener, UnixStream};
 
 use crate::{
     Error, MindEnvelope, MindRoot, MindRootArguments, Result, StoreLocation, SubmitEnvelope,
+    supervision::{SupervisionHandle, SupervisionListener, SupervisionProfile},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,6 +165,7 @@ pub struct MindDaemon {
     endpoint: MindDaemonEndpoint,
     store: StoreLocation,
     socket_mode: Option<MindSocketMode>,
+    supervision: Option<SupervisionListener>,
     codec: MindFrameCodec,
 }
 
@@ -173,6 +175,7 @@ impl MindDaemon {
             endpoint,
             store,
             socket_mode: MindSocketMode::from_environment(),
+            supervision: SupervisionListener::from_environment(SupervisionProfile::mind()),
             codec: MindFrameCodec::default(),
         }
     }
@@ -182,14 +185,24 @@ impl MindDaemon {
         self
     }
 
+    pub fn with_supervision_listener(mut self, supervision: SupervisionListener) -> Self {
+        self.supervision = Some(supervision);
+        self
+    }
+
     pub async fn bind(self) -> Result<BoundMindDaemon> {
         let listener = self.endpoint.bind_listener(self.socket_mode)?;
         let root = MindRoot::start(MindRootArguments::new(self.store)).await?;
+        let supervision = match self.supervision {
+            Some(listener) => Some(listener.spawn(root.clone())?),
+            None => None,
+        };
         Ok(BoundMindDaemon {
             endpoint: self.endpoint,
             codec: self.codec,
             listener,
             root,
+            _supervision: supervision,
         })
     }
 }
@@ -199,6 +212,7 @@ pub struct BoundMindDaemon {
     codec: MindFrameCodec,
     listener: UnixListener,
     root: crate::ActorRef<MindRoot>,
+    _supervision: Option<SupervisionHandle>,
 }
 
 impl BoundMindDaemon {

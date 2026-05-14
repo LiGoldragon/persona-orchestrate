@@ -4,6 +4,11 @@ use std::os::unix::fs::PermissionsExt;
 
 use persona_mind::{
     MindClient, MindDaemon, MindDaemonEndpoint, MindFrameCodec, MindSocketMode, StoreLocation,
+    SupervisionFrameCodec, SupervisionListener, SupervisionSocketMode,
+};
+use signal_persona::{
+    ComponentHealth, ComponentHealthQuery, ComponentHello, ComponentKind, ComponentName,
+    ComponentReadinessQuery, SupervisionProtocolVersion, SupervisionReply, SupervisionRequest,
 };
 use signal_persona_mind::{
     ActiveClaim, ActorName, Alternative, AlternativeId, ByRelationKind, ByThoughtKind,
@@ -99,6 +104,104 @@ async fn constraint_mind_daemon_applies_spawn_envelope_socket_mode() {
         .mode()
         & 0o777;
     assert_eq!(mode, 0o600);
+
+    let server = tokio::spawn(async move { daemon.serve_one().await });
+    let client = MindClient::new(endpoint, ActorName::new("operator"));
+    client
+        .submit(fixture.request())
+        .await
+        .expect("client receives reply frame");
+    server
+        .await
+        .expect("daemon task joins")
+        .expect("daemon serves one request");
+}
+
+#[tokio::test]
+async fn mind_daemon_answers_component_supervision_relation() {
+    let fixture = SocketFixture::new("supervision");
+    let supervision_socket = fixture
+        .endpoint
+        .as_path()
+        .with_extension("supervision.sock");
+    let supervision = SupervisionListener::new(
+        supervision_socket.clone(),
+        SupervisionSocketMode::from_octal(0o600),
+    );
+    let daemon = MindDaemon::new(fixture.endpoint(), fixture.store())
+        .with_supervision_listener(supervision)
+        .bind()
+        .await
+        .expect("daemon binds with supervision relation");
+    let endpoint = daemon.endpoint().clone();
+
+    let mode = std::fs::metadata(&supervision_socket)
+        .expect("supervision socket metadata is readable")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o600);
+
+    let mut stream = UnixStream::connect(&supervision_socket)
+        .await
+        .expect("supervision client connects");
+    let supervision_codec = SupervisionFrameCodec::new(1024 * 1024);
+
+    supervision_codec
+        .write_request(
+            &mut stream,
+            SupervisionRequest::ComponentHello(ComponentHello {
+                expected_component: ComponentName::new("persona-mind"),
+                expected_kind: ComponentKind::Mind,
+                supervision_protocol_version: SupervisionProtocolVersion::new(1),
+            }),
+        )
+        .await
+        .expect("component hello writes");
+    assert!(matches!(
+        supervision_codec
+            .read_reply(&mut stream)
+            .await
+            .expect("component identity reply"),
+        SupervisionReply::ComponentIdentity(identity)
+            if identity.name.as_str() == "persona-mind"
+                && identity.kind == ComponentKind::Mind
+    ));
+
+    supervision_codec
+        .write_request(
+            &mut stream,
+            SupervisionRequest::ComponentReadinessQuery(ComponentReadinessQuery {
+                component: ComponentName::new("persona-mind"),
+            }),
+        )
+        .await
+        .expect("readiness query writes");
+    assert!(matches!(
+        supervision_codec
+            .read_reply(&mut stream)
+            .await
+            .expect("readiness reply"),
+        SupervisionReply::ComponentReady(_)
+    ));
+
+    supervision_codec
+        .write_request(
+            &mut stream,
+            SupervisionRequest::ComponentHealthQuery(ComponentHealthQuery {
+                component: ComponentName::new("persona-mind"),
+            }),
+        )
+        .await
+        .expect("health query writes");
+    assert!(matches!(
+        supervision_codec
+            .read_reply(&mut stream)
+            .await
+            .expect("health reply"),
+        SupervisionReply::ComponentHealthReport(report)
+            if report.health == ComponentHealth::Running
+    ));
 
     let server = tokio::spawn(async move { daemon.serve_one().await });
     let client = MindClient::new(endpoint, ActorName::new("operator"));

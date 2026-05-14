@@ -265,7 +265,7 @@ dependencies = [
 [[package]]
 name = "nota-derive"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/nota-derive.git?branch=main#0d1c24086ae585c84ad92317bb8c463b8cc95697"
+source = "git+https://github.com/LiGoldragon/nota-derive.git?branch=main#e24e50afe110810db50a7eb8f9a7963c6761c0af"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -288,6 +288,7 @@ dependencies = [
  "sema",
  "sema-engine",
  "signal-core",
+ "signal-persona",
  "signal-persona-mind",
  "thiserror",
  "tokio",
@@ -454,11 +455,22 @@ dependencies = [
 [[package]]
 name = "signal-core"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-core.git#aa7a0d93ca8f516557c2be789f8556a7aec66da7"
+source = "git+https://github.com/LiGoldragon/signal-core.git#fddfe8a69029bb1a20200b60da6cf7d4d021b3ae"
 dependencies = [
  "nota-codec",
  "rkyv",
  "thiserror",
+]
+
+[[package]]
+name = "signal-persona"
+version = "0.1.0"
+source = "git+https://github.com/LiGoldragon/signal-persona.git#6baee1abcafbfc1e84e5ecc4a51292d959c4bd15"
+dependencies = [
+ "nota-codec",
+ "rkyv",
+ "signal-core",
+ "signal-persona-auth",
 ]
 
 [[package]]

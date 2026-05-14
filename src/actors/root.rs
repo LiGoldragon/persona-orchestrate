@@ -3,7 +3,7 @@ use kameo::error::Infallible;
 use kameo::message::{Context, Message};
 use signal_persona_mind::MindReply;
 
-use crate::{Error, MindEnvelope, Result, StoreLocation};
+use crate::{Error, MindEnvelope, Result, StoreLocation, supervision};
 
 use super::trace::{ActorTrace, TraceAction, TraceNode};
 use super::{dispatch, domain, ingress, reply, store, subscription, view};
@@ -11,6 +11,7 @@ use super::{dispatch, domain, ingress, reply, store, subscription, view};
 pub struct MindRoot {
     ingress: ActorRef<ingress::IngressPhase>,
     subscription: ActorRef<subscription::SubscriptionSupervisor>,
+    supervision: ActorRef<supervision::SupervisionPhase>,
 }
 
 pub struct Arguments {
@@ -51,10 +52,12 @@ impl MindRoot {
     fn new(
         ingress: ActorRef<ingress::IngressPhase>,
         subscription: ActorRef<subscription::SubscriptionSupervisor>,
+        supervision: ActorRef<supervision::SupervisionPhase>,
     ) -> Self {
         Self {
             ingress,
             subscription,
+            supervision,
         }
     }
 
@@ -101,6 +104,12 @@ impl Actor for MindRoot {
         let subscription = subscription::SubscriptionSupervisor::supervise(
             &actor_reference,
             subscription::Arguments::default(),
+        )
+        .spawn()
+        .await;
+        let supervision = supervision::SupervisionPhase::supervise(
+            &actor_reference,
+            supervision::SupervisionArguments::new(supervision::SupervisionProfile::mind()),
         )
         .spawn()
         .await;
@@ -159,7 +168,7 @@ impl Actor for MindRoot {
                 .spawn()
                 .await;
 
-        Ok(Self::new(ingress, subscription))
+        Ok(Self::new(ingress, subscription, supervision))
     }
 }
 
@@ -180,6 +189,21 @@ impl Message<SubmitEnvelope> for MindRoot {
                 RootReply::new(None, trace)
             }
         }
+    }
+}
+
+impl Message<supervision::HandleSupervisionRequest> for MindRoot {
+    type Reply = supervision::SupervisionPhaseReply;
+
+    async fn handle(
+        &mut self,
+        message: supervision::HandleSupervisionRequest,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.supervision
+            .ask(message)
+            .await
+            .unwrap_or_else(|_| supervision::SupervisionPhaseReply::unavailable())
     }
 }
 
