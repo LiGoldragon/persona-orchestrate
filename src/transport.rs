@@ -83,7 +83,7 @@ impl MindFrameCodec {
 
     pub fn request_frame(&self, actor: &ActorName, request: MindRequest) -> Frame {
         let _ingress_scaffold = actor;
-        Frame::new(FrameBody::Request(Request::assert(request)))
+        Frame::new(FrameBody::Request(request.into_signal_request()))
     }
 
     pub fn reply_frame(&self, reply: MindReply) -> Frame {

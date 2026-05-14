@@ -120,9 +120,7 @@ async fn daemon_accepts_sender_free_request_frames() {
     let mut stream = UnixStream::connect(endpoint.as_path())
         .await
         .expect("client connects to daemon");
-    let frame = Frame::new(FrameBody::Request(signal_core::Request::assert(
-        fixture.request(),
-    )));
+    let frame = Frame::new(FrameBody::Request(fixture.request().into_signal_request()));
     codec
         .write_frame(&mut stream, &frame)
         .await
