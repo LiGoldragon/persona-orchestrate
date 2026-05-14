@@ -656,6 +656,68 @@ fn mind_tables_open_stays_inside_the_store_kernel() {
 }
 
 #[test]
+fn typed_graph_records_cannot_bypass_sema_engine() {
+    let tables = SourceTree::new().file("src/tables.rs");
+    let forbidden_fragments = [
+        ForbiddenFragment {
+            text: "Table<&'static str, Thought>",
+            reason: "typed graph records must be registered in sema-engine",
+        },
+        ForbiddenFragment {
+            text: "Table<&'static str, Relation>",
+            reason: "typed graph records must be registered in sema-engine",
+        },
+        ForbiddenFragment {
+            text: "THOUGHTS.insert",
+            reason: "thought assertions must pass through sema-engine operation logging",
+        },
+        ForbiddenFragment {
+            text: "RELATIONS.insert",
+            reason: "relation assertions must pass through sema-engine operation logging",
+        },
+    ];
+
+    let violations = forbidden_fragments
+        .iter()
+        .flat_map(|fragment| tables.violations_for(fragment))
+        .collect::<Vec<_>>();
+
+    assert!(
+        violations.is_empty(),
+        "typed graph sema-engine bypass violations:\n{}",
+        violations
+            .iter()
+            .map(SourceViolation::summary)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+#[test]
+fn mind_lockfile_cannot_resolve_two_sema_kernels() {
+    let lock = SourceTree::new().file("Cargo.lock");
+
+    assert_eq!(
+        lock.text.matches("name = \"sema\"\n").count(),
+        1,
+        "Cargo.lock must contain one sema package"
+    );
+    assert_eq!(
+        lock.text.matches("name = \"signal-core\"\n").count(),
+        1,
+        "Cargo.lock must contain one signal-core package"
+    );
+    assert!(
+        !lock.text.contains("sema.git?branch=main"),
+        "sema source identity must not fork through ?branch=main"
+    );
+    assert!(
+        !lock.text.contains("signal-core.git?branch=main"),
+        "signal-core source identity must not fork through ?branch=main"
+    );
+}
+
+#[test]
 fn memory_state_cannot_hide_mutation_behind_refcell() {
     let memory = SourceTree::new().file("src/memory.rs");
     let forbidden_fragments = [

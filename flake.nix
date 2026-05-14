@@ -89,6 +89,27 @@
               cargoTestExtraArgs = "--test actor_topology typed_thought_runs_through_graph_actor_lane_and_store_mints_id";
             }
           );
+          mind-typed-thought-append-uses-sema-engine-operation-log = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "typed_thought_append_uses_sema_engine_operation_log";
+            }
+          );
+          mind-typed-graph-records-cannot-bypass-sema-engine = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test weird_actor_truth typed_graph_records_cannot_bypass_sema_engine";
+            }
+          );
+          mind-lockfile-cannot-resolve-two-sema-kernels = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "--test weird_actor_truth mind_lockfile_cannot_resolve_two_sema_kernels";
+            }
+          );
           mind-typed-thought-graph-survives-process-restart = craneLib.cargoTest (
             commonArgs
             // {

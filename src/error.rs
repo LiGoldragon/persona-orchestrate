@@ -32,6 +32,9 @@ pub enum Error {
     #[error("sema: {0}")]
     Sema(#[from] sema::Error),
 
+    #[error("sema engine: {0}")]
+    SemaEngine(#[from] sema_engine::Error),
+
     #[error("unexpected signal frame: {0}")]
     UnexpectedFrame(&'static str),
 

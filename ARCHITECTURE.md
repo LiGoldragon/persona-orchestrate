@@ -4,15 +4,17 @@
 command-line mind.*
 
 > Status: the crate has a real Kameo runtime, mind-local Sema tables for
-> durable role claims, activity records, and a typed work-graph snapshot over
-> mind-local Sema, typed Thought/Relation graph tables with subscription
-> registration and initial snapshots, plus a Unix-socket Signal-frame daemon/client transport
-> around `MindRoot`. The `mind` binary can run a daemon and submit NOTA role
+> durable role claims, activity records, and a typed work-graph snapshot.
+> Typed Thought/Relation graph records use `sema-engine` for Assert/Match and
+> operation-log snapshots, while subscription registrations and older tables
+> still use the same underlying `sema` kernel handle. The crate also has a
+> Unix-socket Signal-frame daemon/client transport around `MindRoot`. The
+> `mind` binary can run a daemon and submit NOTA role
 > claim/release/handoff/observation, activity submission/query, and work-graph
 > opening/note/link/status/alias/query requests through that daemon.
 
 > **Scope.** "Sema" in this document is today's `sema` library (typed
-> storage kernel; rename pending → `sema-db`). The eventual `Sema` is
+> storage kernel). The eventual `Sema` is
 > broader (universal medium for meaning); today's persona-mind is a
 > realization step on the eventually-self-hosting stack, built rightly
 > for the scope it serves now. See `~/primary/ESSENCE.md` §"Today and
@@ -190,9 +192,10 @@ Current implementation:
   `ActivityStore`, and `GraphStore`.
 - `StoreKernel` is the only actor that opens and owns the `MindTables` handle
   over `mind.redb`.
-- `MindTables` schema v5 owns claims, activities, slot cursors, the typed
-  `memory_graph` snapshot table, typed mind graph tables, and typed graph
-  subscription registration tables.
+- `MindTables` schema v6 owns claims, activities, slot cursors, the typed
+  `memory_graph` snapshot table, typed graph subscription registration tables,
+  and the `sema-engine` table registrations for typed Thought/Relation graph
+  records.
 - `ClaimStore` routes claim/release/handoff/observation work to `StoreKernel`,
   where `ClaimLedger` performs the Sema reads and writes.
 - `ActivityStore` routes activity append/query work to `StoreKernel`, where
@@ -201,8 +204,10 @@ Current implementation:
   work/memory snapshots through `StoreKernel`.
 - `GraphStore` routes `SubmitThought`, `SubmitRelation`, `QueryThoughts`,
   `QueryRelations`, `SubscribeThoughts`, and `SubscribeRelations` to
-  `StoreKernel`, where `MindGraphLedger` reads and writes typed `Thought`,
-  `Relation`, and subscription registration records.
+  `StoreKernel`, where `MindGraphLedger` writes typed `Thought`/`Relation`
+  records through `sema-engine`, reads them through `sema-engine` Match
+  queries, and stores subscription registration records through the same
+  `sema` kernel handle.
 - Work/memory mutations append typed `Event` values in the reducer, then
   replace the typed Sema graph snapshot before success replies are emitted.
 - Queries read the loaded work graph through `MemoryStore` and produce typed
@@ -227,10 +232,13 @@ graph TB
 ```
 
 The durable store is one workspace-local `mind.redb` owned by
-`persona-mind`. The storage mechanism is `sema`; the mind-specific Sema layer
-and table declarations belong to `persona-mind` because mind owns this state.
-There is no shared `persona-sema` layer for mind state. Other components talk
-to mind through `signal-persona-mind`.
+`persona-mind`. `sema-engine` owns the single `sema::Sema` handle used by
+`MindTables`; migrated graph records use engine verbs, and unmigrated
+component-local tables temporarily use `Engine::storage_kernel()` so the
+process does not open two redb handles to the same file. The mind-specific
+Sema layer and table declarations belong to `persona-mind` because mind owns
+this state. There is no shared `persona-sema` layer for mind state. Other
+components talk to mind through `signal-persona-mind`.
 
 Recommended tables:
 
@@ -241,10 +249,8 @@ Recommended tables:
 | `activities` | Store-stamped role activity. |
 | `activity_next_slot` | Next activity slot cursor; avoids scanning activities on every append. |
 | `memory_graph` | Current typed graph snapshot for the first durable implementation wave. |
-| `thoughts` | Append-only typed `Thought` records; IDs are compact typed values minted by mind. |
-| `relations` | Append-only typed `Relation` records between thoughts. |
-| `thought_next_slot` | Next thought-ID cursor. |
-| `relation_next_slot` | Next relation-ID cursor. |
+| `thoughts` | `sema-engine` registered family for append-only typed `Thought` records; IDs are compact values minted from the engine snapshot sequence. |
+| `relations` | `sema-engine` registered family for append-only typed `Relation` records between thoughts. |
 | `thought_subscriptions` | Durable `SubscribeThoughts` filters plus mind-minted subscription IDs. |
 | `relation_subscriptions` | Durable `SubscribeRelations` filters plus mind-minted subscription IDs. |
 | `subscription_next_slot` | Next subscription-ID cursor shared by thought and relation subscriptions. |
@@ -391,8 +397,12 @@ This repo does not own:
   table in `mind.redb`.
 - Work/memory writes replace the typed `memory_graph` snapshot in `mind.redb`
   before producing success replies.
-- Typed graph thought/relation writes append to `thoughts` / `relations` in
-  `mind.redb` before producing success replies.
+- Typed graph thought/relation writes use `sema-engine` Assert on registered
+  `thoughts` / `relations` record families before producing success replies.
+- Typed graph thought/relation queries use `sema-engine` Match on registered
+  `thoughts` / `relations` record families.
+- Typed graph writes create `sema-engine` operation-log entries in the same
+  transaction as the graph record.
 - `SubmitThought.kind` must match `SubmitThought.body.kind()`; contradictory
   records are rejected before persistence.
 - `SubmitRelation` must reference existing thought IDs; missing endpoints are
@@ -491,7 +501,10 @@ constraints:
 | `mind_store_survives_process_restart` | role claims committed by one daemon process are visible after a daemon restart on the same `mind.redb`. |
 | `mind_memory_graph_survives_process_restart` | work items opened by one daemon process are visible after a daemon restart on the same `mind.redb`. |
 | `typed_thought_runs_through_graph_actor_lane_and_store_mints_id` | typed graph writes pass through graph actors and mind mints compact IDs. |
+| `typed_thought_append_uses_sema_engine_operation_log` | typed graph Thought append writes through `sema-engine` and records an Assert operation-log entry. |
 | `typed_thought_query_uses_reader_without_writer` | typed graph queries are read-only. |
+| `typed_graph_records_cannot_bypass_sema_engine` | typed graph records cannot be inserted through direct `sema` tables. |
+| `mind_lockfile_cannot_resolve_two_sema_kernels` | Cargo cannot resolve duplicate `sema` / `signal-core` sources while `persona-mind` consumes `sema-engine`. |
 | `typed_relation_rejects_missing_thought_endpoint` | relation endpoints are real thought IDs, not unchecked strings. |
 | `relation_kind_rejects_wrong_domain` | relation domain/range rules come from `signal-persona-mind` and reject invalid endpoints before persistence. |
 | `authored_relation_rejects_non_identity_reference_source` | `Authored` uses the contract endpoint validator and rejects non-identity Reference sources before persistence. |
@@ -518,7 +531,8 @@ src/actors/root.rs         MindRoot
 src/actors/ingress.rs      ingress supervisor and envelope preparation trace
 src/actors/dispatch.rs     request classification and flow selection
 src/actors/domain.rs       mutation domain path
-src/actors/store.rs        store supervisor, store kernel, and narrow store actors
+src/actors/store/mod.rs    store supervisor and narrow store actors
+src/actors/store/kernel.rs store kernel and `MindTables` owner
 src/actors/store/graph.rs  typed Thought/Relation graph actor lane
 src/actors/view.rs         query/read-view path
 src/actors/reply.rs        typed reply shaping path
@@ -530,7 +544,7 @@ src/claim.rs               claim-scope reducer
 src/graph.rs               typed Thought/Relation ledger, filters, and subscription snapshots
 src/memory.rs              memory/work graph reducer
 src/role.rs                local role value
-src/tables.rs              mind-local Sema schema and tables
+src/tables.rs              mind-local Sema schema, `sema-engine` graph families, and unmigrated tables
 src/text.rs                NOTA role-state projection for mind CLI
 src/transport.rs           Unix-socket Signal-frame client/daemon transport
 src/main.rs                command-line entry point

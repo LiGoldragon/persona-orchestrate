@@ -286,6 +286,7 @@ dependencies = [
  "nota-codec",
  "rkyv",
  "sema",
+ "sema-engine",
  "signal-core",
  "signal-persona-mind",
  "thiserror",
@@ -402,10 +403,21 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 [[package]]
 name = "sema"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/sema.git#90e59a6d0b0444fe4f737ab23e91aed383541125"
+source = "git+https://github.com/LiGoldragon/sema.git#57ad38cbb7f56a5d035e4796729596a35fad7cae"
 dependencies = [
  "redb",
  "rkyv",
+ "thiserror",
+]
+
+[[package]]
+name = "sema-engine"
+version = "0.1.0"
+source = "git+https://github.com/LiGoldragon/sema-engine.git#23b436071b183cb095ea2b24c4bd1746dc22a4ae"
+dependencies = [
+ "rkyv",
+ "sema",
+ "signal-core",
  "thiserror",
 ]
 
@@ -442,7 +454,7 @@ dependencies = [
 [[package]]
 name = "signal-core"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-core.git#9f4e20b4917aa1655004b3701ecbf5bce0eac071"
+source = "git+https://github.com/LiGoldragon/signal-core.git#1299471abadc315f0327957b67fe5446aa5211d2"
 dependencies = [
  "nota-codec",
  "rkyv",
