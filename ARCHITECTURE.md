@@ -336,11 +336,7 @@ graph LR
 
 ## 6.5 · Supervision-relation reception
 
-Per
-`~/primary/reports/designer/142-supervision-in-signal-persona-no-message-proxy-daemon.md` §2.2
-and
-`~/primary/reports/designer/143-prototype-readiness-gap-audit.md` §4.2:
-the mind daemon answers the `signal-persona::SupervisionRequest` relation
+The mind daemon answers the `signal-persona::SupervisionRequest` relation
 from a canonical `SupervisionPhase` Kameo actor inside `MindRoot`'s tree.
 The phase actor carries `component_name`, `component_kind`,
 `supervision_protocol_version`, and the cached `ComponentHealth` pushed
@@ -575,8 +571,4 @@ tests/smoke.rs             claim reducer tests
 
 ## See Also
 
-- `~/primary/reports/operator/101-persona-mind-full-architecture-proposal.md`
-- `~/primary/reports/operator/105-command-line-mind-architecture-survey.md`
-- `~/primary/reports/designer/100-persona-mind-architecture-proposal.md`
-- `~/primary/reports/designer/106-actor-discipline-status-and-questions.md`
 - `../signal-persona-mind/ARCHITECTURE.md`
