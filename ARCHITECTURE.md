@@ -258,8 +258,8 @@ Recommended tables:
 | `activities` | Store-stamped role activity. |
 | `activity_next_slot` | Next activity slot cursor; avoids scanning activities on every append. |
 | `memory_graph` | Current typed graph snapshot for the first durable implementation wave. |
-| `thoughts` | `sema-engine` registered family for append-only typed `Thought` records; IDs are compact values minted from the engine snapshot sequence. |
-| `relations` | `sema-engine` registered family for append-only typed `Relation` records between thoughts. |
+| `thoughts` | `sema-engine` registered family for append-only typed `Thought` records; IDs are compact three-letter values minted from the engine snapshot sequence. |
+| `relations` | `sema-engine` registered family for append-only typed `Relation` records between thoughts; relation IDs use the same compact sequence policy but stay a distinct `RelationId` type. |
 | `thought_subscriptions` | Durable Persona-specific `SubscribeThoughts` filters keyed by IDs minted from `sema-engine` subscription handles. |
 | `relation_subscriptions` | Durable Persona-specific `SubscribeRelations` filters keyed by IDs minted from `sema-engine` subscription handles. |
 | `items` | Work/memory/decision/question records. |
@@ -403,6 +403,12 @@ This repo does not own:
   before producing success replies.
 - Typed graph thought/relation writes use `sema-engine` Assert on registered
   `thoughts` / `relations` record families before producing success replies.
+- Typed graph IDs are compact sequence-derived tokens minted from the
+  `sema-engine` snapshot sequence; they are not content hashes, timestamps,
+  payload fields, or strings with embedded type prefixes.
+- Typed graph ID continuity survives reopening `mind.redb`; the next append
+  continues from the persisted engine snapshot and does not collide with
+  existing graph records.
 - Typed graph thought/relation queries use `sema-engine` Match on registered
   `thoughts` / `relations` record families.
 - Typed graph writes create `sema-engine` operation-log entries in the same
@@ -510,6 +516,8 @@ constraints:
 | `mind_memory_graph_survives_process_restart` | work items opened by one daemon process are visible after a daemon restart on the same `mind.redb`. |
 | `typed_thought_runs_through_graph_actor_lane_and_store_mints_id` | typed graph writes pass through graph actors and mind mints compact IDs. |
 | `typed_thought_append_uses_sema_engine_operation_log` | typed graph Thought append writes through `sema-engine` and records an Assert operation-log entry. |
+| `graph_id_policy_mints_compact_typed_sequence_ids_without_prefixes` | graph IDs are short sequence tokens and type lives in `RecordId` / `RelationId`, not in the string. |
+| `graph_id_policy_continues_after_reopen_without_collision` | graph ID continuity comes from persisted `sema-engine` snapshot state. |
 | `typed_thought_query_uses_reader_without_writer` | typed graph queries are read-only. |
 | `typed_graph_records_cannot_bypass_sema_engine` | typed graph records cannot be inserted through direct `sema` tables. |
 | `graph_subscriptions_cannot_bypass_sema_engine_subscribe` | graph subscriptions cannot mint local cursor IDs or skip `sema-engine` Subscribe. |

@@ -110,6 +110,20 @@
               cargoTestExtraArgs = "typed_thought_append_uses_sema_engine_operation_log";
             }
           );
+          mind-graph-id-policy-mints-compact-typed-sequence-ids-without-prefixes = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "graph_id_policy_mints_compact_typed_sequence_ids_without_prefixes";
+            }
+          );
+          mind-graph-id-policy-continues-after-reopen-without-collision = craneLib.cargoTest (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoTestExtraArgs = "graph_id_policy_continues_after_reopen_without_collision";
+            }
+          );
           mind-typed-graph-records-cannot-bypass-sema-engine = craneLib.cargoTest (
             commonArgs
             // {

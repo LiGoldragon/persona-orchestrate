@@ -26,6 +26,9 @@ Rules for work here:
   corrections are new records plus relations, not in-place edits.
 - Thought and relation IDs are typed contract values minted by mind. Do not
   encode type prefixes into ID strings.
+- Current graph IDs are compact sequence-derived tokens minted from the
+  `sema-engine` snapshot sequence. Do not replace them with content hashes or
+  timestamp strings without a new architecture decision.
 - The convenience CLI projection may be smaller than the full contract, but the
   CLI must still accept a full `signal-persona-mind::MindRequest` NOTA record.
 - Lock files are outside the implementation target. They are temporary

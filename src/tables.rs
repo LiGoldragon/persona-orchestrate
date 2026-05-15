@@ -305,7 +305,7 @@ impl MindTables {
             });
         }
 
-        let id = RecordId::new(GraphIdMint::new(&self.engine).record_id_string()?);
+        let id = GraphIdMint::new(&self.engine).next_record_id()?;
         let thought = Thought {
             id,
             kind: submission.kind,
@@ -333,7 +333,7 @@ impl MindTables {
             .validate_endpoints(&source, &target)
             .map_err(|mismatch| crate::Error::MindGraphRelationKindMismatch { mismatch })?;
 
-        let id = RelationId::new(GraphIdMint::new(&self.engine).record_id_string()?);
+        let id = GraphIdMint::new(&self.engine).next_relation_id()?;
         let relation = Relation {
             id,
             kind: submission.kind,
@@ -464,7 +464,10 @@ impl MindTables {
     }
 
     fn subscription_id_from_engine(engine_id: sema_engine::SubscriptionId) -> SubscriptionId {
-        SubscriptionId::new(CompactGraphId::new(engine_id.value().saturating_sub(1)).into_string())
+        SubscriptionId::new(
+            CompactGraphId::from_zero_based_sequence(engine_id.value().saturating_sub(1))
+                .into_string(),
+        )
     }
 }
 
@@ -536,9 +539,20 @@ impl<'engine> GraphIdMint<'engine> {
         Self { engine }
     }
 
-    fn record_id_string(&self) -> Result<String> {
+    fn next_record_id(&self) -> Result<RecordId> {
+        Ok(RecordId::new(self.next_token()?))
+    }
+
+    fn next_relation_id(&self) -> Result<RelationId> {
+        Ok(RelationId::new(self.next_token()?))
+    }
+
+    fn next_token(&self) -> Result<String> {
         let next_snapshot = self.engine.latest_snapshot()?.next();
-        Ok(CompactGraphId::new(next_snapshot.value().saturating_sub(1)).into_string())
+        Ok(
+            CompactGraphId::from_zero_based_sequence(next_snapshot.value().saturating_sub(1))
+                .into_string(),
+        )
     }
 }
 
@@ -649,7 +663,7 @@ impl SubscriptionSink<StoredRelation> for RelationSubscriptionSink {
 }
 
 impl CompactGraphId {
-    fn new(value: u64) -> Self {
+    fn from_zero_based_sequence(value: u64) -> Self {
         Self { value }
     }
 
@@ -754,8 +768,8 @@ mod tests {
     use super::*;
     use signal_core::SignalVerb;
     use signal_persona_mind::{
-        ByThoughtKind, GoalBody, GoalScope, TextBody, ThoughtBody, ThoughtFilter, ThoughtKind,
-        WorkspaceGoal,
+        ByThoughtKind, GoalBody, GoalScope, RelationKind, SubmitRelation, SubmitThought, TextBody,
+        ThoughtBody, ThoughtFilter, ThoughtKind, WorkspaceGoal,
     };
 
     #[test]
@@ -842,6 +856,85 @@ mod tests {
         assert_eq!(head.verb(), SignalVerb::Assert);
         assert_eq!(head.table_name(), "thoughts");
         assert_eq!(head.key().map(RecordKey::as_str), Some(thought.id.as_str()));
+    }
+
+    #[test]
+    fn graph_id_policy_mints_compact_typed_sequence_ids_without_prefixes() {
+        let store = StoreLocation::new(unique_store_path("graph-id-policy"));
+        let tables =
+            MindTables::open(&store, GraphSubscriptionPublisher::disabled()).expect("tables open");
+        let first = tables
+            .append_thought(ActorName::new("operator"), goal_submission("first goal"))
+            .expect("first thought appends");
+        let second = tables
+            .append_thought(ActorName::new("operator"), goal_submission("second goal"))
+            .expect("second thought appends");
+        let relation = tables
+            .append_relation(
+                ActorName::new("operator"),
+                SubmitRelation {
+                    kind: RelationKind::Requires,
+                    source: first.id.clone(),
+                    target: second.id.clone(),
+                    note: None,
+                },
+            )
+            .expect("relation appends");
+
+        assert_eq!(first.id.as_str(), "aaa");
+        assert_eq!(second.id.as_str(), "aab");
+        assert_eq!(relation.id.as_str(), "aac");
+        for token in [first.id.as_str(), second.id.as_str(), relation.id.as_str()] {
+            assert_eq!(token.len(), 3);
+            assert!(token.bytes().all(|byte| byte.is_ascii_lowercase()));
+            assert!(!token.contains('-'));
+            assert!(!token.starts_with("thought"));
+            assert!(!token.starts_with("relation"));
+        }
+    }
+
+    #[test]
+    fn graph_id_policy_continues_after_reopen_without_collision() {
+        let store = StoreLocation::new(unique_store_path("graph-id-reopen"));
+        let first_id = {
+            let tables = MindTables::open(&store, GraphSubscriptionPublisher::disabled())
+                .expect("tables open");
+            tables
+                .append_thought(ActorName::new("operator"), goal_submission("before reopen"))
+                .expect("first thought appends")
+                .id
+        };
+        assert_eq!(first_id.as_str(), "aaa");
+
+        let reopened = MindTables::open(&store, GraphSubscriptionPublisher::disabled())
+            .expect("tables reopen");
+        let second = reopened
+            .append_thought(ActorName::new("operator"), goal_submission("after reopen"))
+            .expect("second thought appends");
+        let records = reopened.thought_records().expect("thoughts read");
+        let log = reopened.engine.commit_log().expect("commit log reads");
+
+        assert_eq!(second.id.as_str(), "aab");
+        assert_eq!(records.len(), 2);
+        assert!(records.iter().any(|thought| thought.id == first_id));
+        assert!(records.iter().any(|thought| thought.id == second.id));
+        assert_eq!(log.len(), 2);
+        assert_ne!(
+            log[0].operations().head().key(),
+            log[1].operations().head().key()
+        );
+    }
+
+    fn goal_submission(description: &str) -> SubmitThought {
+        SubmitThought {
+            kind: ThoughtKind::Goal,
+            body: ThoughtBody::Goal(GoalBody {
+                description: TextBody::new(description),
+                scope: GoalScope::Workspace(WorkspaceGoal {
+                    workspace: TextBody::new("primary"),
+                }),
+            }),
+        }
     }
 
     fn unique_store_path(name: &str) -> String {
