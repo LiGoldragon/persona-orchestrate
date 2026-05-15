@@ -114,7 +114,8 @@ impl DispatchPhase {
             | MindRequest::ChannelExtend(_)
             | MindRequest::ChannelRetract(_)
             | MindRequest::AdjudicationDeny(_)
-            | MindRequest::ChannelList(_) => self.unimplemented(trace),
+            | MindRequest::ChannelList(_)
+            | MindRequest::SubscriptionRetraction(_) => self.unimplemented(trace),
         };
 
         self.shape_reply(pipeline).await

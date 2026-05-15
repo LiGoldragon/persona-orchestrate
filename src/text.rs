@@ -1598,7 +1598,6 @@ impl MindTextReply {
             | contract::MindReply::ThoughtList(_)
             | contract::MindReply::RelationList(_)
             | contract::MindReply::SubscriptionAccepted(_)
-            | contract::MindReply::SubscriptionEvent(_)
             | contract::MindReply::AdjudicationReceipt(_)
             | contract::MindReply::ChannelReceipt(_)
             | contract::MindReply::AdjudicationDenyReceipt(_)

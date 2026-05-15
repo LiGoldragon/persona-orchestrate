@@ -3,10 +3,10 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use signal_core::{
-    ExchangeIdentifier, ExchangeLane, ExchangeSequence, NonEmpty, Reply, RequestPayload,
-    SessionEpoch, SignalVerb, SubReply,
+    ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Reply, RequestPayload, SessionEpoch,
+    SignalVerb, SubReply,
 };
-use signal_persona_mind::{ActorName, Frame, FrameBody, MindReply, MindRequest};
+use signal_persona_mind::{ActorName, MindFrame, MindFrameBody, MindReply, MindRequest};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 
@@ -85,7 +85,7 @@ fn synthetic_exchange() -> ExchangeIdentifier {
     ExchangeIdentifier::new(
         SessionEpoch::new(0),
         ExchangeLane::Connector,
-        ExchangeSequence::first(),
+        LaneSequence::first(),
     )
 }
 
@@ -96,7 +96,7 @@ impl MindFrameCodec {
         }
     }
 
-    pub async fn read_frame(&self, stream: &mut UnixStream) -> Result<Frame> {
+    pub async fn read_frame(&self, stream: &mut UnixStream) -> Result<MindFrame> {
         let mut prefix = [0_u8; 4];
         stream.read_exact(&mut prefix).await?;
         let length = u32::from_be_bytes(prefix) as usize;
@@ -111,26 +111,26 @@ impl MindFrameCodec {
         bytes.extend_from_slice(&prefix);
         bytes.resize(4 + length, 0);
         stream.read_exact(&mut bytes[4..]).await?;
-        Ok(Frame::decode_length_prefixed(&bytes)?)
+        Ok(MindFrame::decode_length_prefixed(&bytes)?)
     }
 
-    pub async fn write_frame(&self, stream: &mut UnixStream, frame: &Frame) -> Result<()> {
+    pub async fn write_frame(&self, stream: &mut UnixStream, frame: &MindFrame) -> Result<()> {
         let bytes = frame.encode_length_prefixed()?;
         stream.write_all(&bytes).await?;
         stream.flush().await?;
         Ok(())
     }
 
-    pub fn request_frame(&self, actor: &ActorName, request: MindRequest) -> Frame {
+    pub fn request_frame(&self, actor: &ActorName, request: MindRequest) -> MindFrame {
         let _ingress_scaffold = actor;
-        Frame::new(FrameBody::Request {
+        MindFrame::new(MindFrameBody::Request {
             exchange: synthetic_exchange(),
             request: request.into_request(),
         })
     }
 
-    pub fn reply_frame(&self, verb: SignalVerb, reply: MindReply) -> Frame {
-        Frame::new(FrameBody::Reply {
+    pub fn reply_frame(&self, verb: SignalVerb, reply: MindReply) -> MindFrame {
+        MindFrame::new(MindFrameBody::Reply {
             exchange: synthetic_exchange(),
             reply: Reply::completed(NonEmpty::single(SubReply::Ok {
                 verb,
@@ -139,9 +139,9 @@ impl MindFrameCodec {
         })
     }
 
-    pub fn request_from_frame(&self, frame: Frame) -> Result<MindRequest> {
+    pub fn request_from_frame(&self, frame: MindFrame) -> Result<MindRequest> {
         match frame.into_body() {
-            FrameBody::Request { request, .. } => {
+            MindFrameBody::Request { request, .. } => {
                 let checked = request
                     .into_checked()
                     .map_err(|(reason, _)| Error::RequestRejected(reason))?;
@@ -151,9 +151,9 @@ impl MindFrameCodec {
         }
     }
 
-    pub fn reply_from_frame(&self, frame: Frame) -> Result<MindReply> {
+    pub fn reply_from_frame(&self, frame: MindFrame) -> Result<MindReply> {
         match frame.into_body() {
-            FrameBody::Reply { reply, .. } => match reply {
+            MindFrameBody::Reply { reply, .. } => match reply {
                 Reply::Accepted { per_operation, .. } => match per_operation.into_head() {
                     SubReply::Ok { payload, .. } => Ok(payload),
                     other => Err(Error::UnexpectedSubReply(format!("{other:?}"))),

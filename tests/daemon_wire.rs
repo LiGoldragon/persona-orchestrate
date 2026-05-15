@@ -7,8 +7,8 @@ use persona_mind::{
     StoreLocation, SupervisionFrameCodec, SupervisionListener, SupervisionSocketMode,
 };
 use signal_core::{
-    ExchangeIdentifier, ExchangeLane, ExchangeSequence, NonEmpty, Operation, Request,
-    RequestPayload, RequestRejectionReason, SessionEpoch, SignalVerb,
+    ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Operation, Request, RequestPayload,
+    RequestRejectionReason, SessionEpoch, SignalVerb,
 };
 use signal_persona::{
     ComponentHealth, ComponentHealthQuery, ComponentHello, ComponentKind, ComponentName,
@@ -16,12 +16,12 @@ use signal_persona::{
 };
 use signal_persona_mind::{
     ActiveClaim, ActorName, Alternative, AlternativeId, ByRelationKind, ByThoughtKind,
-    ClaimActivity, ClaimBody, ClaimScope, DecisionBody, Frame, FrameBody, GoalBody, GoalScope,
-    ItemKind, ItemPriority, MindReply, MindRequest, NoteToSelf, ObservationBody,
-    ObservationSummary, Opening, PathClaimScope, Query, QueryKind, QueryLimit, QueryRelations,
-    QueryThoughts, RelationFilter, RelationKind, RoleClaim, RoleName, RoleObservation, ScopeReason,
-    ScopeReference, SubmitRelation, SubmitThought, TextBody, ThoughtBody, ThoughtFilter,
-    ThoughtKind, TimestampNanos, Title, WirePath, WorkspaceGoal,
+    ClaimActivity, ClaimBody, ClaimScope, DecisionBody, GoalBody, GoalScope, ItemKind,
+    ItemPriority, MindFrame as Frame, MindFrameBody as FrameBody, MindReply, MindRequest,
+    NoteToSelf, ObservationBody, ObservationSummary, Opening, PathClaimScope, Query, QueryKind,
+    QueryLimit, QueryRelations, QueryThoughts, RelationFilter, RelationKind, RoleClaim, RoleName,
+    RoleObservation, ScopeReason, ScopeReference, SubmitRelation, SubmitThought, TextBody,
+    ThoughtBody, ThoughtFilter, ThoughtKind, TimestampNanos, Title, WirePath, WorkspaceGoal,
 };
 use tokio::net::UnixStream;
 
@@ -99,11 +99,11 @@ fn mind_frame_codec_rejects_mismatched_signal_verb() {
         exchange: ExchangeIdentifier::new(
             SessionEpoch::new(0),
             ExchangeLane::Connector,
-            ExchangeSequence::first(),
+            LaneSequence::first(),
         ),
         request: Request::from_operations(NonEmpty::single(Operation::new(
             SignalVerb::Assert,
-            MindRequest::from(QueryThoughts {
+            MindRequest::QueryThoughts(QueryThoughts {
                 filter: ThoughtFilter::ByKind(ByThoughtKind { kinds: Vec::new() }),
                 limit: 1,
             }),
@@ -289,7 +289,7 @@ async fn daemon_accepts_sender_free_request_frames() {
         exchange: ExchangeIdentifier::new(
             SessionEpoch::new(0),
             ExchangeLane::Connector,
-            ExchangeSequence::first(),
+            LaneSequence::first(),
         ),
         request: fixture.request().into_request(),
     });
