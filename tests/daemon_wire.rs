@@ -3,12 +3,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::os::unix::fs::PermissionsExt;
 
 use persona_mind::{
-    MindClient, MindDaemon, MindDaemonEndpoint, MindFrameCodec, MindSocketMode, StoreLocation,
-    SupervisionFrameCodec, SupervisionListener, SupervisionSocketMode,
+    Error, MindClient, MindDaemon, MindDaemonEndpoint, MindFrameCodec, MindSocketMode,
+    StoreLocation, SupervisionFrameCodec, SupervisionListener, SupervisionSocketMode,
 };
 use signal_core::{
     ExchangeIdentifier, ExchangeLane, ExchangeSequence, NonEmpty, Operation, Request,
-    RequestPayload, SessionEpoch, SignalVerb,
+    RequestPayload, RequestRejectionReason, SessionEpoch, SignalVerb,
 };
 use signal_persona::{
     ComponentHealth, ComponentHealthQuery, ComponentHello, ComponentKind, ComponentName,
@@ -113,7 +113,10 @@ fn mind_frame_codec_rejects_mismatched_signal_verb() {
         .request_from_frame(frame)
         .expect_err("mismatched verb is rejected");
 
-    assert!(error.to_string().contains("signal verb mismatch"));
+    assert!(matches!(
+        error,
+        Error::RequestRejected(RequestRejectionReason::VerbPayloadMismatch { index: 0 })
+    ));
 }
 
 #[tokio::test]

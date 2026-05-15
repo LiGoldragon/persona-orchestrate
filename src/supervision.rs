@@ -6,8 +6,8 @@ use kameo::actor::{Actor, ActorRef};
 use kameo::error::Infallible;
 use kameo::message::{Context, Message};
 use signal_core::{
-    ExchangeIdentifier, ExchangeLane, ExchangeSequence, FrameBody, NonEmpty, Reply,
-    RequestPayload, SessionEpoch, SignalVerb, SubReply,
+    ExchangeIdentifier, ExchangeLane, ExchangeSequence, FrameBody, NonEmpty, Reply, RequestPayload,
+    SessionEpoch, SignalVerb, SubReply,
 };
 use signal_persona::{
     ComponentHealth, ComponentHealthQuery, ComponentHealthReport, ComponentHello,
@@ -322,7 +322,10 @@ impl SupervisionFrameCodec {
         self.write_frame(stream, &frame).await
     }
 
-    async fn read_request(&self, stream: &mut UnixStream) -> Result<(SupervisionRequest, SignalVerb)> {
+    async fn read_request(
+        &self,
+        stream: &mut UnixStream,
+    ) -> Result<(SupervisionRequest, SignalVerb)> {
         let frame = self.read_frame(stream).await?;
         match frame.into_body() {
             FrameBody::Request { request, .. } => {
