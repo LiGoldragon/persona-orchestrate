@@ -832,18 +832,16 @@ mod tests {
             )
             .expect("thought appends");
 
-        let log = tables.engine.operation_log().expect("operation log reads");
+        let log = tables.engine.commit_log().expect("commit log reads");
         let records = tables.thought_records().expect("thoughts read");
 
         assert_eq!(thought.id.as_str(), "aaa");
         assert_eq!(records, vec![thought.clone()]);
         assert_eq!(log.len(), 1);
-        assert_eq!(log[0].verb(), SignalVerb::Assert);
-        assert_eq!(log[0].table_name(), "thoughts");
-        assert_eq!(
-            log[0].key().map(RecordKey::as_str),
-            Some(thought.id.as_str())
-        );
+        let head = log[0].operations().head();
+        assert_eq!(head.verb(), SignalVerb::Assert);
+        assert_eq!(head.table_name(), "thoughts");
+        assert_eq!(head.key().map(RecordKey::as_str), Some(thought.id.as_str()));
     }
 
     fn unique_store_path(name: &str) -> String {

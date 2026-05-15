@@ -2,7 +2,10 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use signal_core::Reply;
+use signal_core::{
+    ExchangeIdentifier, ExchangeLane, ExchangeSequence, NonEmpty, Reply, RequestPayload,
+    SessionEpoch, SignalVerb, SubReply,
+};
 use signal_persona_mind::{ActorName, Frame, FrameBody, MindReply, MindRequest};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
@@ -75,6 +78,17 @@ pub struct MindFrameCodec {
     maximum_frame_bytes: usize,
 }
 
+/// Synchronous request/reply transport — exchange identifier is
+/// degenerate. Real handshake + lane tracking lands when wave-2
+/// async multiplexing cuts over.
+fn synthetic_exchange() -> ExchangeIdentifier {
+    ExchangeIdentifier::new(
+        SessionEpoch::new(0),
+        ExchangeLane::Connector,
+        ExchangeSequence::first(),
+    )
+}
+
 impl MindFrameCodec {
     pub const fn new(maximum_frame_bytes: usize) -> Self {
         Self {
@@ -109,23 +123,43 @@ impl MindFrameCodec {
 
     pub fn request_frame(&self, actor: &ActorName, request: MindRequest) -> Frame {
         let _ingress_scaffold = actor;
-        Frame::new(FrameBody::Request(request.into_signal_request()))
+        Frame::new(FrameBody::Request {
+            exchange: synthetic_exchange(),
+            request: request.into_request(),
+        })
     }
 
-    pub fn reply_frame(&self, reply: MindReply) -> Frame {
-        Frame::new(FrameBody::Reply(Reply::operation(reply)))
+    pub fn reply_frame(&self, verb: SignalVerb, reply: MindReply) -> Frame {
+        Frame::new(FrameBody::Reply {
+            exchange: synthetic_exchange(),
+            reply: Reply::completed(NonEmpty::single(SubReply::Ok {
+                verb,
+                payload: reply,
+            })),
+        })
     }
 
     pub fn request_from_frame(&self, frame: Frame) -> Result<MindRequest> {
         match frame.into_body() {
-            FrameBody::Request(request) => Ok(request.into_payload_checked()?),
+            FrameBody::Request { request, .. } => {
+                let checked = request
+                    .into_checked()
+                    .map_err(|(reason, _)| Error::RequestRejected(reason))?;
+                Ok(checked.operations.into_head().payload)
+            }
             _ => Err(Error::UnexpectedFrame("expected mind request operation")),
         }
     }
 
     pub fn reply_from_frame(&self, frame: Frame) -> Result<MindReply> {
         match frame.into_body() {
-            FrameBody::Reply(Reply::Operation(reply)) => Ok(reply),
+            FrameBody::Reply { reply, .. } => match reply {
+                Reply::Accepted { per_operation, .. } => match per_operation.into_head() {
+                    SubReply::Ok { payload, .. } => Ok(payload),
+                    other => Err(Error::UnexpectedSubReply(format!("{other:?}"))),
+                },
+                Reply::Rejected { reason } => Err(Error::ReplyRejected(reason)),
+            },
             _ => Err(Error::UnexpectedFrame("expected mind reply operation")),
         }
     }
@@ -254,6 +288,7 @@ impl BoundMindDaemon {
         let frame = self.codec.read_frame(&mut stream).await?;
         let actor = ActorName::new("operator");
         let request = self.codec.request_from_frame(frame)?;
+        let request_verb = request.signal_verb();
         let envelope = MindEnvelope::new(actor, request);
         let root_reply = self
             .root
@@ -264,7 +299,7 @@ impl BoundMindDaemon {
             .reply()
             .cloned()
             .ok_or(Error::UnexpectedFrame("mind root returned no reply"))?;
-        let frame = self.codec.reply_frame(reply.clone());
+        let frame = self.codec.reply_frame(request_verb, reply.clone());
         self.codec.write_frame(&mut stream, &frame).await?;
         Ok(reply)
     }

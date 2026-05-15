@@ -6,7 +6,10 @@ use persona_mind::{
     MindClient, MindDaemon, MindDaemonEndpoint, MindFrameCodec, MindSocketMode, StoreLocation,
     SupervisionFrameCodec, SupervisionListener, SupervisionSocketMode,
 };
-use signal_core::{Request, SignalVerb};
+use signal_core::{
+    ExchangeIdentifier, ExchangeLane, ExchangeSequence, NonEmpty, Operation, Request,
+    RequestPayload, SessionEpoch, SignalVerb,
+};
 use signal_persona::{
     ComponentHealth, ComponentHealthQuery, ComponentHello, ComponentKind, ComponentName,
     ComponentReadinessQuery, SupervisionProtocolVersion, SupervisionReply, SupervisionRequest,
@@ -92,13 +95,20 @@ async fn daemon_round_trip_uses_signal_frames_over_socket() {
 
 #[test]
 fn mind_frame_codec_rejects_mismatched_signal_verb() {
-    let frame = Frame::new(FrameBody::Request(Request::unchecked_operation(
-        SignalVerb::Assert,
-        MindRequest::from(QueryThoughts {
-            filter: ThoughtFilter::ByKind(ByThoughtKind { kinds: Vec::new() }),
-            limit: 1,
-        }),
-    )));
+    let frame = Frame::new(FrameBody::Request {
+        exchange: ExchangeIdentifier::new(
+            SessionEpoch::new(0),
+            ExchangeLane::Connector,
+            ExchangeSequence::first(),
+        ),
+        request: Request::from_operations(NonEmpty::single(Operation::new(
+            SignalVerb::Assert,
+            MindRequest::from(QueryThoughts {
+                filter: ThoughtFilter::ByKind(ByThoughtKind { kinds: Vec::new() }),
+                limit: 1,
+            }),
+        ))),
+    });
     let error = MindFrameCodec::default()
         .request_from_frame(frame)
         .expect_err("mismatched verb is rejected");
@@ -272,7 +282,14 @@ async fn daemon_accepts_sender_free_request_frames() {
     let mut stream = UnixStream::connect(endpoint.as_path())
         .await
         .expect("client connects to daemon");
-    let frame = Frame::new(FrameBody::Request(fixture.request().into_signal_request()));
+    let frame = Frame::new(FrameBody::Request {
+        exchange: ExchangeIdentifier::new(
+            SessionEpoch::new(0),
+            ExchangeLane::Connector,
+            ExchangeSequence::first(),
+        ),
+        request: fixture.request().into_request(),
+    });
     codec
         .write_frame(&mut stream, &frame)
         .await

@@ -5,7 +5,10 @@ use std::path::{Path, PathBuf};
 use kameo::actor::{Actor, ActorRef};
 use kameo::error::Infallible;
 use kameo::message::{Context, Message};
-use signal_core::{FrameBody, Reply, Request};
+use signal_core::{
+    ExchangeIdentifier, ExchangeLane, ExchangeSequence, FrameBody, NonEmpty, Reply,
+    RequestPayload, SessionEpoch, SignalVerb, SubReply,
+};
 use signal_persona::{
     ComponentHealth, ComponentHealthQuery, ComponentHealthReport, ComponentHello,
     ComponentIdentity, ComponentKind, ComponentName, ComponentReadinessQuery, ComponentReady,
@@ -17,6 +20,18 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::task::JoinHandle;
 
 use crate::{MindRoot, Result};
+
+/// Same wave-1 placeholder as [`crate::transport::synthetic_exchange`]
+/// — supervision uses synchronous request/reply, so the
+/// `ExchangeIdentifier` is degenerate until handshake/lane tracking
+/// lands.
+fn supervision_synthetic_exchange() -> ExchangeIdentifier {
+    ExchangeIdentifier::new(
+        SessionEpoch::new(0),
+        ExchangeLane::Connector,
+        ExchangeSequence::first(),
+    )
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SupervisionProfile {
@@ -255,13 +270,13 @@ impl SupervisionServer {
         codec: SupervisionFrameCodec,
         mut stream: UnixStream,
     ) -> Result<()> {
-        while let Ok(request) = codec.read_request(&mut stream).await {
+        while let Ok((request, verb)) = codec.read_request(&mut stream).await {
             let reply = root
                 .ask(HandleSupervisionRequest::new(request))
                 .await
                 .map_err(|error| crate::Error::ActorCall(error.to_string()))?
                 .into_reply();
-            codec.write_reply(&mut stream, reply).await?;
+            codec.write_reply(&mut stream, verb, reply).await?;
         }
         Ok(())
     }
@@ -282,7 +297,13 @@ impl SupervisionFrameCodec {
     pub async fn read_reply(&self, stream: &mut UnixStream) -> Result<SupervisionReply> {
         let frame = self.read_frame(stream).await?;
         match frame.into_body() {
-            FrameBody::Reply(Reply::Operation(reply)) => Ok(reply),
+            FrameBody::Reply { reply, .. } => match reply {
+                Reply::Accepted { per_operation, .. } => match per_operation.into_head() {
+                    SubReply::Ok { payload, .. } => Ok(payload),
+                    other => Err(crate::Error::UnexpectedSubReply(format!("{other:?}"))),
+                },
+                Reply::Rejected { reason } => Err(crate::Error::ReplyRejected(reason)),
+            },
             _ => Err(crate::Error::UnexpectedFrame(
                 "expected supervision reply operation",
             )),
@@ -294,22 +315,42 @@ impl SupervisionFrameCodec {
         stream: &mut UnixStream,
         request: SupervisionRequest,
     ) -> Result<()> {
-        let frame = SupervisionFrame::new(FrameBody::Request(Request::from_payload(request)));
+        let frame = SupervisionFrame::new(FrameBody::Request {
+            exchange: supervision_synthetic_exchange(),
+            request: request.into_request(),
+        });
         self.write_frame(stream, &frame).await
     }
 
-    async fn read_request(&self, stream: &mut UnixStream) -> Result<SupervisionRequest> {
+    async fn read_request(&self, stream: &mut UnixStream) -> Result<(SupervisionRequest, SignalVerb)> {
         let frame = self.read_frame(stream).await?;
         match frame.into_body() {
-            FrameBody::Request(request) => Ok(request.into_payload_checked()?),
+            FrameBody::Request { request, .. } => {
+                let checked = request
+                    .into_checked()
+                    .map_err(|(reason, _)| crate::Error::RequestRejected(reason))?;
+                let head = checked.operations.into_head();
+                Ok((head.payload, head.verb))
+            }
             _ => Err(crate::Error::UnexpectedFrame(
                 "expected supervision request operation",
             )),
         }
     }
 
-    async fn write_reply(&self, stream: &mut UnixStream, reply: SupervisionReply) -> Result<()> {
-        let frame = SupervisionFrame::new(FrameBody::Reply(Reply::operation(reply)));
+    async fn write_reply(
+        &self,
+        stream: &mut UnixStream,
+        verb: SignalVerb,
+        reply: SupervisionReply,
+    ) -> Result<()> {
+        let frame = SupervisionFrame::new(FrameBody::Reply {
+            exchange: supervision_synthetic_exchange(),
+            reply: Reply::completed(NonEmpty::single(SubReply::Ok {
+                verb,
+                payload: reply,
+            })),
+        });
         self.write_frame(stream, &frame).await
     }
 

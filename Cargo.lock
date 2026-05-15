@@ -279,6 +279,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
 name = "persona-mind"
 version = "0.1.0"
 dependencies = [
@@ -404,7 +410,7 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 [[package]]
 name = "sema"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/sema.git#4a5cb7eda1492a44195d4345eef396f4be15d85a"
+source = "git+https://github.com/LiGoldragon/sema.git#4ea561bc53f6aa38fb71a7570665d57191fce0ea"
 dependencies = [
  "redb",
  "rkyv",
@@ -414,7 +420,7 @@ dependencies = [
 [[package]]
 name = "sema-engine"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/sema-engine.git#9e59fc4f78fd44eb365df44c11dedf12566514e1"
+source = "git+https://github.com/LiGoldragon/sema-engine.git#be9ba5e7d051ecd4ad1cb2521ee431c2dc371430"
 dependencies = [
  "rkyv",
  "sema",
@@ -455,9 +461,10 @@ dependencies = [
 [[package]]
 name = "signal-core"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-core.git#fddfe8a69029bb1a20200b60da6cf7d4d021b3ae"
+source = "git+https://github.com/LiGoldragon/signal-core.git#29006d41cf977c3db129e97e46fce3fc51b19cd4"
 dependencies = [
  "nota-codec",
+ "paste",
  "rkyv",
  "thiserror",
 ]
@@ -476,7 +483,7 @@ dependencies = [
 [[package]]
 name = "signal-persona-auth"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-persona-auth.git#bd7ef57295da0d6f2e1a2f9298b5e3def0509cb3"
+source = "git+https://github.com/LiGoldragon/signal-persona-auth.git#5b3656e9023843e327d56730a09b4a3feef4fc72"
 dependencies = [
  "nota-codec",
  "rkyv",
@@ -486,7 +493,7 @@ dependencies = [
 [[package]]
 name = "signal-persona-mind"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-persona-mind.git#5663917869da2683640b0e687ac3e6b649e3b39e"
+source = "git+https://github.com/LiGoldragon/signal-persona-mind.git#63f948f765d26295cfea9f62f0464c0904ad991c"
 dependencies = [
  "nota-codec",
  "rkyv",

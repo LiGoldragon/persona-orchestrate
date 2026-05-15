@@ -23,8 +23,14 @@ pub enum Error {
     #[error("signal frame: {0}")]
     SignalFrame(#[from] signal_core::FrameError),
 
-    #[error("signal verb mismatch: {0}")]
-    SignalVerbMismatch(#[from] signal_core::SignalVerbMismatch),
+    #[error("request rejected: {0}")]
+    RequestRejected(signal_core::RequestRejectionReason),
+
+    #[error("unexpected sub-reply for single-op request: {0}")]
+    UnexpectedSubReply(String),
+
+    #[error("signal reply rejected before execution: {0}")]
+    ReplyRejected(signal_core::RequestRejectionReason),
 
     #[error("signal persona mind: {0}")]
     SignalPersonaMind(#[from] signal_persona_mind::Error),
