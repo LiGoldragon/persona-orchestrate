@@ -146,8 +146,66 @@ graph TB
     store --> activity[ActivityStore]
     root --> views[ViewPhase]
     root --> subscriptions[SubscriptionSupervisor]
+    root --> choreography[ChoreographyAdjudicator]
     root --> reply[ReplyShaper]
 ```
+
+`ReplyShaper` shapes exactly one reply per request; it does not supervise
+children. The name reflects verb-belongs-to-noun: it is a shaping verb on the
+reply path, not a supervision relationship.
+
+### ChoreographyAdjudicator (destination)
+
+`ChoreographyAdjudicator` is a stateful child of `MindRoot` that owns the
+channel-choreography decision plane. It holds:
+
+- `policy: ChoreographyPolicy` — the live policy that decides grant/deny;
+- a grant table keyed by `ChannelId` (`HashMap<ChannelId, ChannelGrant>`)
+  carrying the active grants;
+- an adjudication log of accepted/denied requests for audit and replay.
+
+It handles the full choreography family — `AdjudicationRequest`,
+`ChannelGrant`, `ChannelExtend`, `ChannelRetract`, `AdjudicationDeny`,
+`ChannelList` — and routes `SubscriptionRetraction` requests by closing the
+named subscription's stream and emitting the `SubscriptionRetracted` reply.
+Both the retract request and the retracted reply are first-class per the
+`signal_channel!` streaming grammar.
+
+Status: destination. Today the dispatch routes choreography request variants
+to `MindReply::MindRequestUnimplemented(NotInPrototypeScope)`. The
+`ChoreographyAdjudicator` actor is the next implementation gate; the
+trace test for choreography asserts the actor receives the message and
+that no `unimplemented` fallback is hit.
+
+### Subscription push delivery (destination)
+
+The destination shape for typed graph subscription push delivery splits
+`SubscriptionSupervisor` into three actors:
+
+- **`SubscriptionManager`** — owns subscription metadata: subscription IDs,
+  registration state, the durable filter row, last-acked delta cursor.
+  Persists through `StoreKernel` to `thought_subscriptions` /
+  `relation_subscriptions` in `mind.redb`.
+- **`StreamingReplyHandler`** (one per live subscription) — owns the reply
+  channel for that subscription, buffers post-commit deltas under the
+  consumer's signalled demand, and emits the terminal
+  `MindReply::SubscriptionRetracted` reply when the consumer's
+  `MindRequest::SubscriptionRetraction` request closes the stream (or when
+  the producer terminates the stream itself).
+- **`SubscriptionDeltaPublisher`** — fires after each store commit; reads
+  the committed delta, looks up matching subscriptions through
+  `SubscriptionManager`, and hands typed delta records to the matching
+  `StreamingReplyHandler`s.
+
+Backpressure is consumer-driven: the consumer signals
+`MindRequest::SubscriptionDemand(n)`; `StreamingReplyHandler` releases up
+to `n` deltas and then waits. There is no unbounded
+`SubscriptionSupervisor::events: Vec<_>` buffer in the destination shape.
+
+Status: destination. Today `SubscriptionSupervisor` collects post-commit
+deltas behind an in-actor buffer; the three-actor split with
+consumer-driven demand and the typed retract/retracted close discipline
+is transitional → destination.
 
 Current request path for implemented memory/work operations:
 
@@ -195,6 +253,19 @@ Current implementation:
   `ActivityStore`, and `GraphStore`.
 - `StoreKernel` is the only actor that opens and owns the `MindTables` handle
   over `mind.redb`.
+- `StoreKernel` currently spawns on Tokio's shared worker pool via
+  `supervise(...).spawn()`. The destination is a **dedicated OS thread**
+  (Template 2 from `~/primary/skills/kameo.md` §"Blocking-plane templates"),
+  because every kernel handler performs a synchronous redb transaction and
+  running those on a shared worker stalls sibling actors. Switching to
+  `supervise(...).spawn_in_thread()` on Kameo 0.20 keeps the redb file
+  locked across daemon restart: Kameo signals "child closed" when the
+  mailbox receiver is dropped, **before** the actor's `Self` value (which
+  holds `MindTables` and the redb `Database`) is dropped. The next daemon's
+  `bind()` then races the old OS thread and fails with `UnexpectedEof` or
+  hangs on the second open. Deferral pending either a Kameo close hook
+  that fires after `Self` is dropped, or an actor-owned close-then-confirm
+  protocol.
 - `MindTables` schema v7 owns claims, activities, slot cursors, the typed
   `memory_graph` snapshot table, typed graph subscription registration tables,
   and the `sema-engine` table registrations for typed Thought/Relation graph
@@ -216,7 +287,19 @@ Current implementation:
   `sema-engine` subscription sinks and publishes typed
   `signal-persona-mind::SubscriptionEvent` records for matching durable
   filters. Thought filters are evaluated against the current relation snapshot
-  through the store actor path; relation filters are evaluated directly.
+  through the store actor path; relation filters are evaluated directly. The
+  in-actor delta buffer is transitional; the destination split into
+  `SubscriptionManager` + `StreamingReplyHandler` + `SubscriptionDeltaPublisher`
+  with consumer-driven demand lives in §3.
+- Subscription close follows the `signal_channel!` streaming grammar:
+  `Subscribe` opens the stream, the consumer sends a typed
+  `Retract SubscriptionRetraction(SubscriptionId)` request to close,
+  and the producer returns `MindReply::SubscriptionRetracted` as the
+  final acknowledgement before the stream ends. Both the request-side
+  retract verb and the reply-side acknowledgement are first-class. The
+  `signal_channel!` macro emits a `closed_stream()` discriminant on the
+  request enum from this pairing — that is the binding shape, not a
+  transitional one.
 - Work/memory mutations append typed `Event` values in the reducer, then
   replace the typed Sema graph snapshot before success replies are emitted.
 - Queries read the loaded work graph through `MemoryStore` and produce typed
@@ -341,11 +424,16 @@ from a canonical `SupervisionPhase` Kameo actor inside `MindRoot`'s tree.
 The phase actor carries `component_name`, `component_kind`,
 `supervision_protocol_version`, and the cached `ComponentHealth` pushed
 from the domain plane. For domain operations whose behavior is not yet
-built (e.g., the channel-choreography family until the policy engine
-lands), `MindRoot` replies
+built, `MindRoot` replies
 `MindReply::MindRequestUnimplemented(NotInPrototypeScope)` — a typed
-answer, not a panic. The mind daemon reads its `signal-persona::SpawnEnvelope`
-at startup, binds `mind.sock` at the named mode, and proceeds.
+answer, not a panic. The channel-choreography family
+(`AdjudicationRequest`, `ChannelGrant`, `ChannelExtend`,
+`ChannelRetract`, `AdjudicationDeny`, `ChannelList`,
+`SubscriptionRetraction`) routes to `ChoreographyAdjudicator` in the
+destination shape; the current `Unimplemented(NotInPrototypeScope)` reply
+is transitional and retires when the actor lands. The mind daemon reads
+its `signal-persona::SpawnEnvelope` at startup, binds `mind.sock` at the
+named mode, and proceeds.
 
 ## 7 · Boundaries
 
