@@ -16,14 +16,14 @@ use super::view;
 pub(super) struct DispatchPhase {
     domain: ActorRef<domain::DomainPhase>,
     view: ActorRef<view::ViewPhase>,
-    reply: ActorRef<reply::ReplySupervisor>,
+    reply: ActorRef<reply::ReplyShaper>,
 }
 
 #[derive(Clone)]
 pub(super) struct Arguments {
     pub(super) domain: ActorRef<domain::DomainPhase>,
     pub(super) view: ActorRef<view::ViewPhase>,
-    pub(super) reply: ActorRef<reply::ReplySupervisor>,
+    pub(super) reply: ActorRef<reply::ReplyShaper>,
 }
 
 pub struct RouteEnvelope {
@@ -35,7 +35,7 @@ impl DispatchPhase {
     fn new(
         domain: ActorRef<domain::DomainPhase>,
         view: ActorRef<view::ViewPhase>,
-        reply: ActorRef<reply::ReplySupervisor>,
+        reply: ActorRef<reply::ReplyShaper>,
     ) -> Self {
         Self {
             domain,

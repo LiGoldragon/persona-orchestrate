@@ -113,7 +113,7 @@ impl ActorManifest {
             ManifestEntry::new(TraceNode::SUBSCRIPTION_SUPERVISOR, long_lived),
             ManifestEntry::new(TraceNode::COMMIT_BUS, trace_phase),
             ManifestEntry::new(TraceNode::SUBSCRIBER, trace_phase),
-            ManifestEntry::new(TraceNode::REPLY_SUPERVISOR, long_lived),
+            ManifestEntry::new(TraceNode::REPLY_SHAPER, long_lived),
             ManifestEntry::new(TraceNode::NOTA_REPLY_ENCODER, trace_phase),
             ManifestEntry::new(TraceNode::ERROR_SHAPER, trace_phase),
         ];
@@ -125,7 +125,7 @@ impl ActorManifest {
             ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::STORE_SUPERVISOR),
             ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::VIEW_PHASE),
             ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::SUBSCRIPTION_SUPERVISOR),
-            ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::REPLY_SUPERVISOR),
+            ManifestEdge::new(TraceNode::MIND_ROOT, TraceNode::REPLY_SHAPER),
             ManifestEdge::new(TraceNode::INGRESS_PHASE, TraceNode::REQUEST_SESSION),
             ManifestEdge::new(TraceNode::INGRESS_PHASE, TraceNode::NOTA_DECODER),
             ManifestEdge::new(
@@ -193,8 +193,8 @@ impl ActorManifest {
             ManifestEdge::new(TraceNode::VIEW_PHASE, TraceNode::RECENT_ACTIVITY_VIEW),
             ManifestEdge::new(TraceNode::SUBSCRIPTION_SUPERVISOR, TraceNode::COMMIT_BUS),
             ManifestEdge::new(TraceNode::SUBSCRIPTION_SUPERVISOR, TraceNode::SUBSCRIBER),
-            ManifestEdge::new(TraceNode::REPLY_SUPERVISOR, TraceNode::NOTA_REPLY_ENCODER),
-            ManifestEdge::new(TraceNode::REPLY_SUPERVISOR, TraceNode::ERROR_SHAPER),
+            ManifestEdge::new(TraceNode::REPLY_SHAPER, TraceNode::NOTA_REPLY_ENCODER),
+            ManifestEdge::new(TraceNode::REPLY_SHAPER, TraceNode::ERROR_SHAPER),
         ];
 
         Self { actors, edges }

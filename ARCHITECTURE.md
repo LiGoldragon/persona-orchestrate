@@ -146,7 +146,7 @@ graph TB
     store --> activity[ActivityStore]
     root --> views[ViewPhase]
     root --> subscriptions[SubscriptionSupervisor]
-    root --> reply[ReplySupervisor]
+    root --> reply[ReplyShaper]
 ```
 
 Current request path for implemented memory/work operations:
@@ -164,7 +164,7 @@ graph LR
     memory --> reducer[MemoryState reducer]
     store --> domain
     domain --> dispatch
-    dispatch --> reply[ReplySupervisor]
+    dispatch --> reply[ReplyShaper]
     reply --> root
     root --> caller
 ```

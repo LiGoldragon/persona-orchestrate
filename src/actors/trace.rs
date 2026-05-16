@@ -57,7 +57,7 @@ impl TraceNode {
     pub const SUBSCRIPTION_SUPERVISOR: Self = Self::new("SubscriptionSupervisor");
     pub const COMMIT_BUS: Self = Self::new("CommitBus");
     pub const SUBSCRIBER: Self = Self::new("Subscriber");
-    pub const REPLY_SUPERVISOR: Self = Self::new("ReplySupervisor");
+    pub const REPLY_SHAPER: Self = Self::new("ReplyShaper");
     pub const NOTA_REPLY_ENCODER: Self = Self::new("NotaReplyEncoder");
     pub const ERROR_SHAPER: Self = Self::new("ErrorShaper");
 

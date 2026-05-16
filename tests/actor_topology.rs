@@ -120,7 +120,7 @@ fn topology_manifest_names_required_actor_planes() {
         TraceNode::ACTIVITY_STORE,
         TraceNode::VIEW_PHASE,
         TraceNode::SUBSCRIPTION_SUPERVISOR,
-        TraceNode::REPLY_SUPERVISOR,
+        TraceNode::REPLY_SHAPER,
         TraceNode::SEMA_WRITER,
         TraceNode::SEMA_READER,
         TraceNode::ID_MINT,
@@ -137,7 +137,7 @@ fn topology_manifest_names_required_actor_planes() {
     assert!(manifest.contains_edge(TraceNode::STORE_SUPERVISOR, TraceNode::MEMORY_STORE));
     assert!(manifest.contains_edge(TraceNode::STORE_SUPERVISOR, TraceNode::CLAIM_STORE));
     assert!(manifest.contains_edge(TraceNode::STORE_SUPERVISOR, TraceNode::ACTIVITY_STORE));
-    assert!(manifest.contains_edge(TraceNode::REPLY_SUPERVISOR, TraceNode::NOTA_REPLY_ENCODER));
+    assert!(manifest.contains_edge(TraceNode::REPLY_SHAPER, TraceNode::NOTA_REPLY_ENCODER));
 }
 
 #[tokio::test]
@@ -171,7 +171,7 @@ async fn open_item_runs_through_kameo_write_path() {
         TraceNode::MEMORY_STORE,
         TraceNode::SEMA_WRITER,
         TraceNode::COMMIT,
-        TraceNode::REPLY_SUPERVISOR,
+        TraceNode::REPLY_SHAPER,
         TraceNode::MIND_ROOT,
     ]));
     assert!(
@@ -223,7 +223,7 @@ async fn query_path_uses_read_actor_without_writer() {
         TraceNode::MEMORY_STORE,
         TraceNode::SEMA_READER,
         TraceNode::QUERY_RESULT_SHAPER,
-        TraceNode::REPLY_SUPERVISOR,
+        TraceNode::REPLY_SHAPER,
     ]));
     assert!(response.trace().contains(TraceNode::SEMA_READER));
     assert!(!response.trace().contains(TraceNode::SEMA_WRITER));
@@ -256,7 +256,7 @@ async fn role_claim_reaches_claim_flow_and_commits() {
         TraceNode::CLAIM_STORE,
         TraceNode::SEMA_WRITER,
         TraceNode::COMMIT,
-        TraceNode::REPLY_SUPERVISOR,
+        TraceNode::REPLY_SHAPER,
     ]));
 
     fixture.stop().await;
@@ -392,7 +392,7 @@ async fn role_handoff_moves_claim_between_roles() {
         TraceNode::CLAIM_STORE,
         TraceNode::SEMA_WRITER,
         TraceNode::COMMIT,
-        TraceNode::REPLY_SUPERVISOR,
+        TraceNode::REPLY_SHAPER,
     ]));
 
     let observed = fixture
@@ -476,7 +476,7 @@ async fn activity_submission_reaches_activity_flow_and_store_mints_time() {
         TraceNode::CLOCK,
         TraceNode::SEMA_WRITER,
         TraceNode::COMMIT,
-        TraceNode::REPLY_SUPERVISOR,
+        TraceNode::REPLY_SHAPER,
     ]));
 
     fixture.stop().await;
@@ -609,7 +609,7 @@ async fn typed_thought_runs_through_graph_actor_lane_and_store_mints_id() {
         TraceNode::CLOCK,
         TraceNode::SEMA_WRITER,
         TraceNode::COMMIT,
-        TraceNode::REPLY_SUPERVISOR,
+        TraceNode::REPLY_SHAPER,
     ]));
 
     fixture.stop().await;
@@ -662,7 +662,7 @@ async fn typed_thought_query_uses_reader_without_writer() {
         TraceNode::GRAPH_STORE,
         TraceNode::SEMA_READER,
         TraceNode::QUERY_RESULT_SHAPER,
-        TraceNode::REPLY_SUPERVISOR,
+        TraceNode::REPLY_SHAPER,
     ]));
     assert!(!response.trace().contains(TraceNode::SEMA_WRITER));
 
@@ -712,7 +712,7 @@ async fn typed_thought_subscription_registers_and_returns_initial_snapshot() {
         TraceNode::SEMA_READER,
         TraceNode::SEMA_WRITER,
         TraceNode::COMMIT,
-        TraceNode::REPLY_SUPERVISOR,
+        TraceNode::REPLY_SHAPER,
     ]));
 
     fixture.stop().await;
@@ -868,7 +868,7 @@ async fn typed_relation_subscription_registers_and_returns_initial_snapshot() {
         TraceNode::SEMA_READER,
         TraceNode::SEMA_WRITER,
         TraceNode::COMMIT,
-        TraceNode::REPLY_SUPERVISOR,
+        TraceNode::REPLY_SHAPER,
     ]));
 
     fixture.stop().await;

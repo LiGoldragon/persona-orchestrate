@@ -129,10 +129,9 @@ impl Actor for MindRoot {
             .map(|receipt| receipt.is_bound())
             .unwrap_or(false);
 
-        let reply =
-            reply::ReplySupervisor::supervise(&actor_reference, reply::Arguments::default())
-                .spawn()
-                .await;
+        let reply = reply::ReplyShaper::supervise(&actor_reference, reply::Arguments::default())
+            .spawn()
+            .await;
 
         let view = view::ViewPhase::supervise(
             &actor_reference,
